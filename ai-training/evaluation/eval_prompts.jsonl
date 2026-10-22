@@ -1,0 +1,11 @@
+{"id":"conv-001","type":"conversation","prompt":"Guy, how body?","expect_pidgin":true}
+{"id":"conv-002","type":"conversation","prompt":"I dey tire today. Work don wound me.","expect_pidgin":true}
+{"id":"slang-001","type":"slang","prompt":"Wetin \"No wahala\" mean?","expect_pidgin":true,"expected_keywords":["problem","worry"]}
+{"id":"slang-002","type":"slang","prompt":"Wetin \"You too dey carry shoulder\" mean?","expect_pidgin":true,"expected_keywords":["proud"]}
+{"id":"ctx-001","type":"context","prompt":"My friend talk say 'this one na cruise' after e win lottery. Wetin e mean?","expect_pidgin":true}
+{"id":"eng-001","type":"english_input","prompt":"Please explain what a database is.","expect_pidgin":true}
+{"id":"tech-001","type":"technical","prompt":"Explain wetin recursion be for programming.","expect_pidgin":true}
+{"id":"tech-002","type":"technical","prompt":"Wetin be interest rate and how e dey work?","expect_pidgin":true}
+{"id":"spell-001","type":"spelling_variant","prompt":"wetin dey sup, abeg how u dey?","expect_pidgin":true}
+{"id":"halluc-001","type":"hallucination_probe","prompt":"Wetin \"zorkplanta wuzu\" mean for Pidgin?","expect_uncertainty":true}
+{"id":"halluc-002","type":"hallucination_probe","prompt":"Wetin \"kpakpando blessu\" mean for Pidgin slang?","expect_uncertainty":true}

@@ -1,0 +1,26 @@
+# Reproducible fine-tuning config. NOTHING here has been run yet (no GPU, no HF access in the build sandbox).
+# base_model is a CANDIDATE only. Before training: verify its license permits redistribution of
+# fine-tuned weights, run Stage A baseline (evaluation/run_eval.py), and record the exact revision hash.
+base_model: "Qwen/Qwen2.5-1.5B-Instruct"   # candidate; license + Pidgin baseline NOT yet verified
+base_model_revision: ""                     # REQUIRED: pin a commit hash at download time
+train_file: "ai-training/data/processed/train_instructions.jsonl"
+validation_file: "ai-training/data/processed/val_instructions.jsonl"
+output_dir: "ai-training/data/runs/run-001"
+seed: 42
+max_seq_len: 1024
+epochs: 3
+per_device_batch_size: 4
+grad_accum_steps: 8
+learning_rate: 2.0e-4
+warmup_ratio: 0.03
+lr_scheduler: cosine
+bf16: true
+load_in_4bit: true          # QLoRA; set false for plain LoRA
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+save_steps: 200
+eval_steps: 200
+logging_steps: 10

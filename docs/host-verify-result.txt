@@ -1,0 +1,37 @@
+PASS  gguf: architecture
+PASS  gguf: name
+PASS  gguf: context length
+PASS  gguf: quantization label
+PASS  gguf: chat template detected
+PASS  gguf: license key
+PASS  gguf: rejects non-GGUF bytes
+PASS  gguf: rejects truncated file
+PASS  gguf: rejects empty file
+PASS  engine: load of a non-GGUF file fails cleanly
+PASS  engine: load of a corrupt file fails cleanly (no crash)
+PASS  engine: generate without a model errors
+PASS  engine: load real GGUF
+PASS  engine: generate returns stats
+PASS  engine: produced tokens (<= max)
+PASS  engine: streamed text pieces arrived
+PASS  engine: not flagged cancelled
+      (tokens=32, 5 tok/s on host with a 0.5 MB random model: plumbing only)
+PASS  engine: emoji + diacritics prompt OK
+PASS  engine: cancel stops generation early
+PASS  engine: can generate again after a cancel
+PASS  engine: cross-thread cancel ends the worker
+PASS  engine: oversized prompt gives a clear error
+PASS  engine: unload during generation is safe
+PASS  engine: reload after unload-during-generation
+PASS  engine: generate after unload errors
+PASS  engine: reload after unload works
+PASS  engine: repeated load/unload #0
+PASS  engine: repeated load/unload #1
+PASS  engine: repeated load/unload #2
+PASS  engine: repeated load/unload #3
+PASS  engine: repeated load/unload #4
+PASS  prompts: system first
+PASS  prompts: newest turn kept
+PASS  prompts: window is bounded
+PASS  prompts: strict mode differs
+35 passed, 0 failed

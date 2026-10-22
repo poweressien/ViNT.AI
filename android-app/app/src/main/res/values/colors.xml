@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ViNT palette. These four colors (+ white) are the ONLY colors allowed in the UI. See docs/BRAND.md. -->
+<resources>
+    <color name="vint_background">#0F1115</color>
+    <color name="vint_green">#2FA36B</color>
+    <color name="vint_surface">#20242C</color>
+    <color name="vint_border">#373D4A</color>
+    <color name="vint_white">#FFFFFF</color>
+    <color name="ic_launcher_background">#0F1115</color>
+</resources>

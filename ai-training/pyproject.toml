@@ -1,0 +1,13 @@
+[project]
+name = "pidgin-pipeline"
+version = "0.1.0"
+description = "Dataset, training and evaluation pipeline for PidginGPT"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+train = ["torch", "transformers>=4.44", "peft>=0.12", "datasets", "accelerate", "pyyaml", "bitsandbytes"]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["pidgin_pipeline*"]

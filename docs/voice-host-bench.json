@@ -1,0 +1,114 @@
+{
+  "host": "Linux x86_64, 1 CPU core (NOT a phone)",
+  "sherpa_onnx": "1.13.8",
+  "asr_standard_english": {
+    "whisper-tiny (int8, language=en)": {
+      "load_seconds": 0.57,
+      "n_utterances": 3,
+      "corpus_wer": 0.078,
+      "mean_real_time_factor": 0.252,
+      "examples": [
+        {
+          "ref": "AFTER EARLY NIGHTFALL THE YELLOW LAMPS WOULD LIGHT UP HERE AND THERE THE SQUALID QUARTER OF THE BROTHELS",
+          "hyp": "After early nightfall, the yellow lamps would light up here and there the squalid quarter of the brothels."
+        },
+        {
+          "ref": "GOD AS A DIRECT CONSEQUENCE OF THE SIN WHICH MAN THUS PUNISHED HAD GIVEN HER A LOVELY CHILD WHOSE PLACE WAS ON THAT SAME DISHONOURED BOSOM TO CONNECT HER PARENT FOR EVER WITH THE RACE AND DESCENT OF MORTALS AND TO BE FINALLY A BLESSED SOUL IN HEAVEN",
+          "hyp": "God, as a direct consequence of the sin which man thus punished, had given her a lovely child, whose place was on that same dishonored bosom to connect her parrot forever with the race and descent of mortals, and to be finally a blessed soul in heaven."
+        },
+        {
+          "ref": "YET THESE THOUGHTS AFFECTED HESTER PRYNNE LESS WITH HOPE THAN APPREHENSION",
+          "hyp": "Yet these thoughts affected her prin less with hope than apprehension."
+        }
+      ]
+    },
+    "moonshine-tiny-en (int8)": {
+      "load_seconds": 0.76,
+      "n_utterances": 3,
+      "corpus_wer": 0.039,
+      "mean_real_time_factor": 0.093,
+      "examples": [
+        {
+          "ref": "AFTER EARLY NIGHTFALL THE YELLOW LAMPS WOULD LIGHT UP HERE AND THERE THE SQUALID QUARTER OF THE BROTHELS",
+          "hyp": "After early nightfall, the yellow lamps would light up here and there the squalid quarter of the brothels."
+        },
+        {
+          "ref": "GOD AS A DIRECT CONSEQUENCE OF THE SIN WHICH MAN THUS PUNISHED HAD GIVEN HER A LOVELY CHILD WHOSE PLACE WAS ON THAT SAME DISHONOURED BOSOM TO CONNECT HER PARENT FOR EVER WITH THE RACE AND DESCENT OF MORTALS AND TO BE FINALLY A BLESSED SOUL IN HEAVEN",
+          "hyp": "God, as a direct consequence of the sin which man thus punished, had given her a lovely child, whose place was on that same dishonoured bosom to connect her parent forever with the race and descent of mortals, and to be finally a blessed soul in heaven."
+        },
+        {
+          "ref": "YET THESE THOUGHTS AFFECTED HESTER PRYNNE LESS WITH HOPE THAN APPREHENSION",
+          "hyp": "Yet these thoughts affected Hester Prin less with hope than apprehension."
+        }
+      ]
+    }
+  },
+  "tts": {
+    "kokoro-int8-en-v0_19": {
+      "load_seconds": 1.38,
+      "sample_rate": 24000,
+      "num_speakers": 11,
+      "mean_real_time_factor": 2.689,
+      "peak_rss_mb_so_far": 844
+    },
+    "piper en_GB northern_english_male (medium)": {
+      "load_seconds": 2.38,
+      "sample_rate": 22050,
+      "num_speakers": 1,
+      "mean_real_time_factor": 0.337,
+      "peak_rss_mb_so_far": 894
+    },
+    "piper en_GB southern_english_female (low)": {
+      "load_seconds": 2.63,
+      "sample_rate": 16000,
+      "num_speakers": 1,
+      "mean_real_time_factor": 0.367,
+      "peak_rss_mb_so_far": 966
+    }
+  },
+  "tts_to_asr_loop_synthetic": {
+    "kokoro-int8-en-v0_19 -> whisper-tiny (int8, language=en)": {
+      "corpus_wer": 0.467,
+      "rows": [
+        {
+          "ref": "How body? I dey kampe, no wahala.",
+          "hyp": "How body, I day camp, Noah Hala."
+        },
+        {
+          "ref": "Abeg make you wait small, I go come back.",
+          "hyp": "A big make you wait small. I go come back."
+        },
+        {
+          "ref": "Wetin dey happen for market today?",
+          "hyp": "Wet and Day, happen for market today."
+        },
+        {
+          "ref": "Person wey no hear word go hear am.",
+          "hyp": "Person we know here word go here, M."
+        }
+      ]
+    },
+    "kokoro-int8-en-v0_19 -> moonshine-tiny-en (int8)": {
+      "corpus_wer": 0.433,
+      "rows": [
+        {
+          "ref": "How body? I dey kampe, no wahala.",
+          "hyp": "How body, i-day camp, noahala."
+        },
+        {
+          "ref": "Abeg make you wait small, I go come back.",
+          "hyp": "A beg make you wait small, I go come back."
+        },
+        {
+          "ref": "Wetin dey happen for market today?",
+          "hyp": "Wedding day happened for market today."
+        },
+        {
+          "ref": "Person wey no hear word go hear am.",
+          "hyp": "Personway no here word go here am."
+        }
+      ]
+    }
+  },
+  "peak_rss_mb_total": 1001
+}

@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "note": "Speech models are NOT bundled. Each entry pins the exact file that was downloaded and tested (SHA-256 computed 2026-10-21). Licenses come from the packaged LICENSE/MODEL_CARD files or the upstream GitHub repository.",
+  "models": [
+    {
+      "id": "sherpa-onnx-moonshine-tiny-en-int8",
+      "kind": "asr",
+      "family": "moonshine",
+      "languages": [
+        "en"
+      ],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-tiny-en-int8.tar.bz2",
+      "local_name": "moonshine-tiny-en-int8.tar.bz2",
+      "sha256": "d5fe6ec4334fef36255b2a4010412cad4c007e33103fec62fb5d17cad88086f2",
+      "download_bytes": 107600538,
+      "license": "MIT (LICENSE in package; upstream usefulsensors/moonshine, MIT for English models)",
+      "pidgin_support": "none (English-only model; Pidgin words are mis-spelled, see docs/VOICE_MODELS.md)"
+    },
+    {
+      "id": "sherpa-onnx-whisper-tiny",
+      "kind": "asr",
+      "family": "whisper",
+      "languages": [
+        "multilingual (99 languages incl. Yoruba, Hausa, Swahili; no Pidgin)"
+      ],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.tar.bz2",
+      "local_name": "whisper-tiny.tar.bz2",
+      "sha256": "c46116994e539aa165266d96b325252728429c12535eb9d8b6a2b10f129e66b1",
+      "download_bytes": 116204861,
+      "license": "MIT (openai/whisper: code and model weights)",
+      "pidgin_support": "none (no Pidgin language token; run in English mode)"
+    },
+    {
+      "id": "vits-piper-en_GB-northern_english_male-medium-int8",
+      "kind": "tts",
+      "family": "piper-vits",
+      "languages": [
+        "en-GB"
+      ],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-northern_english_male-medium-int8.tar.bz2",
+      "local_name": "piper-nem-int8.tar.bz2",
+      "sha256": "9b2afdc8f35426f6b2739f255e67841679a52b56d19ece874a1eae208cb88ad1",
+      "download_bytes": 21100291,
+      "license": "CC-BY-SA-4.0 (MODEL_CARD: dataset OpenSLR 83)",
+      "pidgin_support": "none"
+    },
+    {
+      "id": "vits-piper-en_GB-southern_english_female-low-int8",
+      "kind": "tts",
+      "family": "piper-vits",
+      "languages": [
+        "en-GB"
+      ],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-southern_english_female-low-int8.tar.bz2",
+      "local_name": "piper-sef-low-int8.tar.bz2",
+      "sha256": "4f0fba9578f6aeeba7b0d0e642ea161a3754fce53079551c1b72f3de641d0e12",
+      "download_bytes": 21207615,
+      "license": "CC-BY-SA-4.0 (MODEL_CARD: dataset OpenSLR 83)",
+      "pidgin_support": "none"
+    },
+    {
+      "id": "kokoro-int8-en-v0_19",
+      "kind": "tts",
+      "family": "kokoro",
+      "languages": [
+        "en"
+      ],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-en-v0_19.tar.bz2",
+      "local_name": "kokoro-int8-en-v0_19.tar.bz2",
+      "sha256": "c9f0dd393615805b0bab050c340834d5e684e732aec91c0e860cd30e982c08bd",
+      "download_bytes": 103248205,
+      "license": "Apache-2.0 (LICENSE in package)",
+      "pidgin_support": "none"
+    }
+  ],
+  "runtime": {
+    "id": "sherpa-onnx-android-aar",
+    "version": "1.13.8",
+    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar",
+    "sha256": "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96",
+    "download_bytes": 50129134,
+    "dest": "android-app/app/libs/sherpa-onnx-1.13.8.aar",
+    "license": "Apache-2.0 (k2-fsa/sherpa-onnx)"
+  }
+}

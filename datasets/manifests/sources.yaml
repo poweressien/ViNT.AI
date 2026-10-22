@@ -1,0 +1,26 @@
+# Dataset source register. EVERY entry is "unverified" until a human has read the actual license text and
+# recorded the date and evidence. Nothing here has been downloaded or checked (the build sandbox could not
+# reach these hosts). Do not ingest a source until status == verified.
+sources:
+  - name: project-seed-draft
+    kind: original
+    path: datasets/sample/seed_expressions.jsonl
+    license: "CC0-1.0 (project-authored)"
+    status: verified-local
+    notes: "6 records drafted by an AI assistant, labeled synthetic, NOT native-speaker verified. Smoke-test data only."
+  - name: CENCOS
+    kind: corpus
+    status: unverified
+    todo: "Locate official distribution, read license, record URL/date/version, check redistribution + model-training permission."
+  - name: AfriDataHub Pidgin resources
+    kind: corpus
+    status: unverified
+    todo: "Verify each dataset's individual license; some may be non-commercial or no-derivatives."
+  - name: DiscoNaija
+    kind: corpus
+    status: unverified
+    todo: "Check terms of use and whether text is user-generated content with restrictions."
+  - name: community-contributions
+    kind: contributed
+    status: not-started
+    todo: "Consent form + contribution workflow (docs/DATA_COLLECTION.md); contributors must be able to withdraw."

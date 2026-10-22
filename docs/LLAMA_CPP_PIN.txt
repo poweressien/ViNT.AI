@@ -1,0 +1,1 @@
+52ffa027455662ea59f78d0e4e5a8f38ee63a5fe  ggml-org/llama.cpp  (committed 2026-10-20, 'model : support Nemotron-3(.5)-Embed (#30877)')  MIT

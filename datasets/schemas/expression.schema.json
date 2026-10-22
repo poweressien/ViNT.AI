@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PidginGPT expression record",
+  "type": "object",
+  "required": ["expression", "source", "license", "provenance"],
+  "properties": {
+    "id": {"type": "string"},
+    "expression": {"type": "string", "maxLength": 500},
+    "normalized_expression": {"type": "string"},
+    "meaning_in_pidgin": {"type": "string"},
+    "contextual_meaning": {"type": "string"},
+    "usage_examples": {"type": "array", "items": {"type": "string"}},
+    "alternative_spellings": {"type": "array", "items": {"type": "string"}},
+    "related_expressions": {"type": "array", "items": {"type": "string"}},
+    "category": {"type": "string"},
+    "tone": {"type": "string"},
+    "region_or_variant": {"type": "string"},
+    "source": {"type": "string"},
+    "license": {"type": "string"},
+    "provenance": {"type": "string"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "human_verified": {"type": "boolean"},
+    "synthetic": {"type": "boolean"}
+  }
+}

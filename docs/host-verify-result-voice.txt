@@ -1,0 +1,111 @@
+PASS  machine: starts Off, mic closed
+PASS  machine: talk ignored while Off
+PASS  machine: start -> Idle
+PASS  machine: press -> Listening (mic open)
+PASS  machine: release -> Transcribing (mic closed)
+PASS  machine: transcript -> Thinking
+PASS  machine: press ignored while Thinking (no overlap)
+PASS  machine: first audio -> Speaking
+PASS  machine: reply done while speaking stays Speaking
+PASS  machine: speech finished -> Idle
+PASS  machine: interrupt while speaking -> Idle, no recording
+PASS  machine: stop voice mode while listening -> Off
+PASS  machine: nothing heard -> Idle
+PASS  machine: failure -> Error
+PASS  machine: restart from Error -> Idle
+PASS  machine: 20,000 random events keep all invariants
+PASS  vad: synthetic burst -> SpeechStarted then SpeechEnded
+PASS  vad: speech end reported ~0.9 s after the burst
+PASS  vad: quiet noise alone gives no events
+PASS  vad: isolated 60 ms click is not speech
+PASS  vad: endless speech hits max length
+PASS  vad: level meter reports energy
+PASS  vad: test wav is 16 kHz
+PASS  vad: real speech -> SpeechStarted shortly after onset
+PASS  vad: real speech -> SpeechEnded within ~2 s after the speech
+      real-speech VAD events (ms): [(SpeechStarted, 2040), (SpeechEnded, 8010)] ; speech spans 1000..7625
+PASS  text: emoji and markdown removed
+PASS  text: Yoruba diacritics kept
+PASS  text: urls and code blocks dropped
+PASS  text: bullets stripped
+PASS  text: char-by-char streaming gives the same chunks as one push
+PASS  text: chunks are whole sentences
+PASS  text: nothing speakable -> no chunks
+PASS  text: very long run without punctuation is still split
+PASS  think: block removed
+PASS  think: empty block + newlines (Qwen3 /no_think output)
+PASS  think: token-by-token streaming equals one-shot
+PASS  think: unterminated block never leaks
+PASS  think: lone '<' text survives
+PASS  think: tag split across tokens
+PASS  think: system prompt adds /no_think only when asked
+PASS  json: parses nested values
+PASS  json: rejects trailing garbage
+PASS  json: rejects unterminated string
+PASS  json: rejects deep nesting bomb
+PASS  catalog: real file parses (8 profiles)
+PASS  catalog: 5 regional styles are unavailable and reference no model
+PASS  catalog: no available profile claims a Nigerian Pidgin style
+PASS  catalog: every selectable profile has license + attribution + source
+PASS  catalog: nothing installed -> no pick
+PASS  catalog: unavailable profile can never be picked even if requested
+PASS  catalog: stored choice respected when installed
+PASS  catalog: stale choice falls back to first installed
+PASS  catalog: duplicate ids rejected
+PASS  catalog: selectable profile without model rejected
+PASS  catalog: unavailable profile with a model rejected
+PASS  unzip: zip-slip '../' rejected
+PASS  unzip: absolute path rejected
+PASS  unzip: nothing escaped
+PASS  unzip: size bomb rejected
+PASS  unzip: entry-count bomb rejected
+PASS  unzip: single top-level folder is flattened
+PASS  unzip: no temp folders left behind
+PASS  store: detects Moonshine + Whisper ASR
+PASS  store: detects Piper (x2) + Kokoro TTS
+PASS  store: an empty/unknown folder is NOT reported as a model
+PASS  store: whisper repack kept int8 only (small)
+PASS  catalog+store: three installed profiles selectable
+PASS  asr[MOONSHINE]: real English speech corpus WER < 0.25 (n=3)
+      sherpa-onnx-moonshine-tiny-en-int8: load 0.62s, WER 0.039 over 3 utterances, RTF 0.024 (host, 1 core; NOT a phone)
+PASS  asr[MOONSHINE]: silence does not crash
+PASS  asr[WHISPER]: real English speech corpus WER < 0.25 (n=3)
+      sherpa-onnx-whisper-tiny: load 0.36s, WER 0.078 over 3 utterances, RTF 0.091 (host, 1 core; NOT a phone)
+PASS  asr[WHISPER]: silence does not crash
+PASS  asr: 3 create/release cycles
+PASS  tts[piper]: produces audio (> 2 s for a 4-sentence text)
+PASS  tts[piper]: audio is not silent
+PASS  tts[piper]: streams in several chunks
+      piper: 5.7 s audio in 1.2 s (RTF 0.21, host)
+PASS  tts[piper]: returning false stops synthesis after the first chunk
+PASS  tts[piper]: out-of-range speaker id is clamped, no crash
+PASS  tts[piper female]: produces audio at 16000 Hz
+PASS  tts[kokoro]: produces audio, 11 speakers
+PASS  turn: completes
+PASS  turn: transcript came from real ASR (non-empty)
+PASS  turn: events in order
+PASS  turn: state machine ends Idle (mic closed)
+PASS  turn: reply streamed and audio produced
+PASS  turn: sink drained once at end, not stopped
+PASS  turn: timings recorded
+      turn timings (host, 1 core, NOT a phone): TurnTimings(asrMs=472, llmFirstPieceMs=4, firstAudioMs=858, llmTotalMs=5, totalMs=1354)
+PASS  interrupt: turn ends after interrupt
+PASS  interrupt: playback stopped immediately
+PASS  interrupt: stops within 2 s
+PASS  interrupt: no audio written after stop settles
+PASS  interrupt: no completion events fired
+      interrupt took 431 ms
+PASS  silence: turn completes
+PASS  silence: NothingHeard, no reply, no audio
+PASS  no-tts: reply text delivered, nothing spoken, turn ends Idle
+PASS  llm failure: Error state, no spoken text, message kept
+PASS  pipeline: llama engine loads mechanics model
+PASS  pipeline: context overflow surfaces as Error with a clear message, nothing spoken
+PASS  pipeline: completes
+PASS  pipeline: real ASR text reached the real engine and tokens came back
+PASS  pipeline: reply was spoken (audio produced)
+PASS  pipeline: ends Idle
+      random-model reply (gibberish by design): '?????zx?bB na? how???y??x6!-?<unk>6?@???o#' ; timings TurnTimings(asrMs=125, llmFirstPieceMs=468, firstAudioMs=7939, llmTotalMs=9336, totalMs=9624)
+PASS  pipeline: interrupt during real generation ends the turn
+PASS  pipeline: engine usable again after interrupt
+103 passed, 0 failed

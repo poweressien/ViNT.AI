@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launch (splash) theme: near-black background + the ViNT mark. Switches to Theme.ViNT after launch. -->
+    <style name="Theme.ViNT.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/vint_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
+        <item name="postSplashScreenTheme">@style/Theme.ViNT</item>
+    </style>
+
+    <!-- Everything explicit: no Material/AppCompat default colors leak into system bars, selection or accents. -->
+    <style name="Theme.ViNT" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/vint_background</item>
+        <item name="android:statusBarColor">@color/vint_background</item>
+        <item name="android:navigationBarColor">@color/vint_background</item>
+        <item name="android:navigationBarDividerColor">@color/vint_border</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:colorPrimary">@color/vint_green</item>
+        <item name="android:colorAccent">@color/vint_green</item>
+        <item name="android:colorBackground">@color/vint_background</item>
+        <item name="android:colorControlActivated">@color/vint_green</item>
+        <item name="android:colorControlNormal">@color/vint_border</item>
+        <item name="android:colorControlHighlight">@color/vint_white</item>
+        <item name="android:textColorPrimary">@color/vint_white</item>
+        <item name="android:textColorSecondary">@color/vint_white</item>
+        <item name="android:textColorHint">@color/vint_white</item>
+        <item name="android:textColorHighlight">@color/vint_green</item>
+        <item name="android:textColorLink">@color/vint_green</item>
+    </style>
+</resources>
