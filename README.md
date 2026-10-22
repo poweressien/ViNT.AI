@@ -35,4 +35,3 @@ python tools/fetch_voice_models.py --out dist/voice-models               # verif
 1. Build on Windows (`docs/BUILD_ANDROID.md`), send the first Gradle error log. 2. Get Qwen3-1.7B GGUF + run the baseline (`docs/MODEL_SELECTION.md`). 3. Phone tests (`docs/OFFLINE_VERIFICATION.md`). 4. Decide the GPL/eSpeak question. 5. Collect consented Pidgin speech for a Pidgin-capable recogniser/voice (`docs/VOICE_PROFILES.md`).
 
 Docs: `BRAND.md` `BUILD_ANDROID.md` `HOST_VERIFICATION.md` `LICENSES.md` `MODEL_SELECTION.md` `OFFLINE_VERIFICATION.md` `VOICE.md` `VOICE_PROFILES.md`. Layout: `android-app/ ai-training/ datasets/ models/ tools/ tests/ docs/ voices/`
-# ViNT.AI

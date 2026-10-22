@@ -164,6 +164,11 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Show Gradle failure excerpt
+        if: failure()
+        continue-on-error: true
+        run: bash .github/scripts/extract_errors.sh "$RUNNER_TEMP/gradle-build.log"
+
       - name: Upload diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -186,29 +191,18 @@ jobs:
     needs: [python-checks, jni-host-verify, android-debug]
     if: always()
     steps:
-      - name: Write job summary
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Write job summary (reporting only, never fails)
+        continue-on-error: true
         env:
           R_PY: ${{ needs.python-checks.result }}
           R_JNI: ${{ needs.jni-host-verify.result }}
           R_APK: ${{ needs.android-debug.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          mark() { case "$1" in success) echo "PASSED";; failure) echo "FAILED";; skipped) echo "SKIPPED";; cancelled) echo "CANCELLED";; *) echo "$1";; esac; }
-          {
-            echo "## ViNT build summary"
-            echo
-            echo "| Stage | Result |"
-            echo "|---|---|"
-            echo "| Python tests + static audits (no Android) | $(mark "$R_PY") |"
-            echo "| JNI bridge on host CPU, pinned llama.cpp (not the Android build) | $(mark "$R_JNI") |"
-            echo "| Android debug APK: Gradle, Kotlin/Compose, NDK/CMake arm64-v8a, APK checks | $(mark "$R_APK") |"
-            echo
-            if [ "$R_APK" = "success" ]; then
-              echo "**APK:** download artifact **ViNT-debug-apk** from the *Artifacts* section at the bottom of this run page: $RUN_URL"
-            else
-              echo "**No APK was produced by this run.** Open the failed job log; diagnostics are in artifact **ViNT-build-diagnostics**."
-            fi
-            echo
-            echo "_Not covered by CI: a real language model is never loaded and no AI inference is run; speech models are not downloaded; nothing runs on a phone._"
-          } >> "$GITHUB_STEP_SUMMARY"
-          [ "$R_PY" = "success" ] && [ "$R_JNI" = "success" ] && [ "$R_APK" = "success" ]
+        run: bash .github/scripts/write_summary.sh
+      - name: Gate (fails only if a required job did not succeed)
+        env:
+          R_PY: ${{ needs.python-checks.result }}
+          R_JNI: ${{ needs.jni-host-verify.result }}
+          R_APK: ${{ needs.android-debug.result }}
+        run: bash .github/scripts/gate_summary.sh
