@@ -178,3 +178,8 @@ def test_gradle_layout_check_catches_duplicate_versions_and_missing_repositories
 def test_ci_checks_gradle_layout_before_gradle_runs():
     w = read(ROOT / ".github/workflows/android-build.yml")
     assert w.count("check_gradle_layout.py") >= 2 and w.index("check_gradle_layout.py", w.index("android:\n    runs-on")) < w.index(":app:help")
+
+
+def test_ripple_alpha_is_imported_and_its_artifact_is_declared():
+    assert "import androidx.compose.material.ripple.RippleAlpha" in read(J / "ui/Theme.kt")
+    assert 'implementation("androidx.compose.material:material-ripple")' in read(ROOT / "android-app/app/build.gradle.kts")
