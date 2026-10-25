@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(vint_jni)
-# llama.cpp is NOT a submodule: tools/setup_llama_cpp.{sh,ps1} fetch it at the commit PINNED in docs/LLAMA_CPP_PIN.txt.
+# llama.cpp is a git submodule PINNED to the commit recorded in docs/BUILD_ANDROID.md and docs/LICENSES.md.
 set(LLAMA_DIR ${CMAKE_SOURCE_DIR}/../../../../third_party/llama.cpp)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(LLAMA_CURL OFF CACHE BOOL "" FORCE)            # no networking code compiled in

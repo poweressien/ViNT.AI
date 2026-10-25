@@ -36,6 +36,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import ng.pidgingpt.ChatViewModel
+import ng.pidgingpt.ai.ProviderKind
 import ng.pidgingpt.inference.EngineState
 import ng.pidgingpt.voice.TtsFamily
 import ng.pidgingpt.voice.VoiceState
@@ -71,22 +72,25 @@ private fun stateLabel(s: VoiceState, handsFree: Boolean): String = when (s) {
     val installedTts = remember(tick) { vm.speech.installedTtsIds() }
     val modeOn = ui.state !is VoiceState.Off && ui.state !is VoiceState.Error
     val busy = ui.state.busy; var handsFree by remember { mutableStateOf(false) }
-    val llmReady = engine is EngineState.Ready
+    val pstatus by vm.providerStatus.collectAsState()
+    val onlineForVoice = vm.settings.onlineInVoice && pstatus.selected == ProviderKind.ONLINE
+    val llmReady = engine is EngineState.Ready || onlineForVoice
 
     Page("Voice", onBack, scroll = false) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // ---- status
             Row(verticalAlignment = Alignment.CenterVertically) { StatusDot(modeOn); Spacer(Modifier.width(8.dp)); Text(stateLabel(ui.state, handsFree), fontSize = 14.sp, modifier = Modifier.weight(1f)) }
             ui.notice?.let { Notice(it, Icons.Default.Info) }
+            ui.route?.let { secondary(it, 12) }
             if (ui.state is VoiceState.Error) Notice((ui.state as VoiceState.Error).message)
 
             // ---- the three local components
             Column(Modifier.fillMaxWidth().vintCard().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Three parts, all on this phone", fontWeight = FontWeight.SemiBold)
+                Text("Speech runs on this phone", fontWeight = FontWeight.SemiBold)
                 @Composable fun part(title: String, ok: Boolean, detail: String) = Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) { Text(title, fontSize = 14.sp); secondary(detail, 12) }; Pill(if (ok) "Ready" else "Missing", ok) }
                 part("1 · Speech recognition", asr.isNotEmpty(), if (asr.isNotEmpty()) (vm.selectedAsr()?.id ?: "") else "Import a speech recognition model below.")
-                part("2 · Language model", llmReady, if (llmReady) (engine as EngineState.Ready).modelName else "Not ready. Load a model on the Model screen.")
+                part("2 · Language model", llmReady, if (engine is EngineState.Ready) (engine as EngineState.Ready).modelName else if (onlineForVoice) "Cloud AI (online): your transcribed words are sent to it" else "Not ready. Load or download a model on the Model screen.")
                 part("3 · Voice (speech output)", vm.selectedVoice() != null, vm.selectedVoice()?.displayName ?: "Optional. Without a voice, replies are shown but not spoken.")
                 if (!llmReady) VintOutlinedButton("Open Model screen", goModel)
             }

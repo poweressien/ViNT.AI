@@ -35,3 +35,18 @@ A missing INTERNET permission is **not** proof of offline behaviour; it is one i
 | Date | Device / Android | Model | Steps passed | Notes |
 |---|---|---|---|---|
 | — | — | — | none yet | — |
+
+---
+## Milestone 4 manual device tests (hybrid AI). **None of these has been run yet.**
+Automated tests (JUnit, `app/src/test`) use fake providers and fake HTTP; they cannot prove any item below.
+1. **Real GGUF load**: download or import Qwen2.5-1.5B-Instruct Q4_K_M; Model screen shows "Runtime: loaded successfully"; ask 3 English questions; note tokens/s and RAM. Repeat with Qwen3-1.7B if imported.
+2. **Airplane mode**: model loaded, airplane mode on: status "Offline — Local English model", replies work, nothing else needed.
+3. **Offline only with Wi-Fi on + online configured**: status never says Online; with a proxy log, confirm **zero** requests during chat.
+4. **Automatic with validated Wi-Fi** (mobile data off): status "Online — Cloud AI", icon line shown, reply streams, proxy log shows one request per message.
+5. **Wi-Fi without internet / captive portal**: status stays Offline; replies come from the local model.
+6. **Cut the connection mid-reply**: partial text is kept, a Failed notice appears with Retry / Retry offline; the proxy shows no second request.
+7. **Wrong key / quota / server down** (stop the proxy): each shows its own message, falls back to local when nothing had streamed.
+8. **Interrupted download**: toggle airplane mode during the model download; partial is kept; Resume completes; delete model; storage freed.
+9. **Mixed Pidgin/English prompts** with the local English model: record what it actually does (observed, not verified).
+10. **Voice**: voice mode with online-in-voice off stays offline (proxy log empty); on: only transcribed text arrives; no audio is ever sent.
+11. **Rotate / background during a reply and during a download.**

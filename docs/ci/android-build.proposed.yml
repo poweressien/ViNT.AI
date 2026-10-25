@@ -1,0 +1,67 @@
+# REFERENCE workflow. Not applied to your repository and never run. Merge the steps you are missing into your real workflow
+# (see docs/ci/MERGE_INTO_EXISTING_WORKFLOW.md). Nothing here is committed binary: every dependency is fetched in CI.
+name: Build ViNT Android APK
+on: [push, pull_request, workflow_dispatch]
+env: { WORKDIR: '.' }                # repository root == the folder that directly contains android-app/, tools/, docs/, tests/ (the ZIP's top-level 'pidgingpt/' folder is NOT part of the repo)
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard - project layout is where this workflow expects it
+        run: |
+          test -d "${{ env.WORKDIR }}/android-app" && test -f "${{ env.WORKDIR }}/tools/setup_llama_cpp.sh" || {
+            echo "Layout mismatch: expected android-app/ and tools/ under WORKDIR='${{ env.WORKDIR }}'. Found:"; ls -la; exit 1; }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Python tests and static audits
+        working-directory: ${{ env.WORKDIR }}
+        run: |
+          pip install pytest pillow
+          python -m pytest -q
+          python tools/audit_android_offline.py android-app
+          python tools/audit_brand_palette.py android-app
+      - name: Fetch pinned llama.cpp (not stored in the repo)
+        working-directory: ${{ env.WORKDIR }}
+        run: bash tools/setup_llama_cpp.sh
+      - name: Fetch sherpa-onnx AAR (SHA-256 verified, not stored in the repo)
+        working-directory: ${{ env.WORKDIR }}
+        run: python tools/fetch_voice_models.py --runtime
+      - name: Check required dependencies exist before Gradle runs
+        working-directory: ${{ env.WORKDIR }}
+        run: |
+          test -s android-app/app/libs/sherpa-onnx-1.13.8.aar
+          test -f android-app/third_party/llama.cpp/CMakeLists.txt
+          git -C android-app/third_party/llama.cpp rev-parse HEAD | grep -q "$(awk '{print $1}' docs/LLAMA_CPP_PIN.txt)"
+      - uses: android-actions/setup-android@v3          # installs cmdline-tools and accepts licences
+      - name: Install SDK platform and CMake (the NDK is installed by the Android Gradle Plugin because build.gradle.kts pins none)
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "cmake;3.22.1"
+      - uses: gradle/actions/setup-gradle@v4              # supplies Gradle, so no wrapper jar has to be committed
+        with: { gradle-version: '8.9' }
+      - name: Gradle configuration
+        working-directory: ${{ env.WORKDIR }}/android-app
+        run: gradle --no-daemon :app:help --stacktrace
+      - name: Lint, unit tests, debug APK (compiles Kotlin and the native llama.cpp/JNI library)
+        working-directory: ${{ env.WORKDIR }}/android-app
+        run: gradle --no-daemon :app:lintDebug :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - name: Verify the APK exists, is not empty, and contains the native library
+        run: |
+          f=$(find ${{ env.WORKDIR }}/android-app/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          test -n "$f" && test -s "$f" && ls -l "$f"
+          unzip -l "$f" | grep -E "lib/arm64-v8a/.*\.so"
+      - uses: actions/upload-artifact@v4
+        with: { name: vint-debug-apk, path: "${{ env.WORKDIR }}/android-app/app/build/outputs/apk/debug/*.apk", if-no-files-found: error }
+      - name: Keep diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics
+          path: |
+            ${{ env.WORKDIR }}/android-app/app/build/reports/**
+            ${{ env.WORKDIR }}/android-app/app/build/test-results/**
+            ${{ env.WORKDIR }}/android-app/app/.cxx/**/*.log

@@ -1,14 +1,18 @@
-# Build ViNT for Android
+# Build ViNT for Android (Windows 10/11)
 
-**Primary path: GitHub Actions. See `GITHUB_ACTIONS.md`** (push to `main` or Actions → Android build → Run workflow, then download the `ViNT-debug-apk` artifact). The Windows/Android Studio path below remains as a local alternative.
-
-## Build status: **no APK has been produced yet** (updated with the CI pipeline)
-Local sandbox builds are impossible (Google/Gradle hosts unreachable: `dl.google.com`, `maven.google.com`, `repo.maven.apache.org`, `plugins.gradle.org`, `services.gradle.org`). The CI workflow is written but has **not yet run on GitHub**.
-**Never compiled:** the Compose UI (`Theme.kt`, `Screens.kt`, `VoiceScreen.kt`), `ChatViewModel.kt`, `MainActivity.kt`, Gradle/AGP configuration, and the NDK build of llama.cpp. Expect first-build fixes; the CI log or `ViNT-build-diagnostics` artifact is what to send me.
+## Build status: **no APK exists.** The build could not be run in the sandbox (checked again 2026-10-21)
+Exact failures from the sandbox (DNS is blocked for every Android/Gradle repository):
+```
+dl.google.com / maven.google.com / repo.maven.apache.org / plugins.gradle.org / services.gradle.org  ->  curl: Could not resolve host
+```
+Without Maven Google/Central, Gradle cannot fetch the Android Gradle Plugin, Compose, AndroidX or Kotlin plugin, so `assembleDebug` cannot run there.
+What the sandbox **could** reach (GitHub release assets, PyPI) was used to compile and test everything that does not need Gradle: see `HOST_VERIFICATION.md`.
+**Never compiled:** the Compose UI (`Theme.kt`, `Screens.kt`, `VoiceScreen.kt`), `ChatViewModel.kt`, `MainActivity.kt`, Gradle/AGP configuration, and the NDK build of llama.cpp.
+Expect first-build fixes. Send me the exact Gradle output and I will fix them.
 
 ## 1. Install (once)
 1. **Android Studio** (current stable). It bundles JDK 17 (JBR).
-2. In Android Studio → *SDK Manager*: SDK Platform **34**; SDK Tools: **Android SDK Build-Tools 34.0.0**, **NDK (Side by side) 26.1.10909125**, **CMake 3.22.1**, **Platform-Tools**.
+2. In Android Studio → *SDK Manager*: SDK Platform **34**; SDK Tools: **Android SDK Build-Tools**, **NDK (Side by side)**, **CMake 3.22.1**, **Platform-Tools**.
 3. **Git for Windows**. Python 3.10+ (only for the data/eval tools).
 4. A phone with Developer options → USB debugging on (ARM64 phones; the app builds `arm64-v8a` only).
 5. Put the project in a **short path**, e.g. `C:\vint\pidgingpt` (long-path errors are common with the NDK on Windows).
@@ -23,8 +27,12 @@ llama.cpp at the pinned commit:
 cd C:\vint\pidgingpt
 powershell -ExecutionPolicy Bypass -File tools\setup_llama_cpp.ps1     # pinned: see docs\LLAMA_CPP_PIN.txt
 ```
-## 3. Gradle wrapper
-The wrapper (Gradle 8.9, checksum-pinned) is now committed in `android-app/` (`gradlew`, `gradlew.bat`, `gradle/wrapper/*`). Nothing to generate.
+## 3. Gradle wrapper (no wrapper jar is committed; CI uses `gradle/actions/setup-gradle` instead, see `docs/ci/`)
+```powershell
+winget install Gradle.Gradle            # or install Gradle 8.9 manually
+cd android-app
+gradle wrapper --gradle-version 8.9
+```
 Create `android-app\local.properties` with your SDK path, e.g. `sdk.dir=C\:\\Users\\YOU\\AppData\\Local\\Android\\Sdk`
 (Android Studio creates it automatically when you open the folder).
 
@@ -40,7 +48,7 @@ Expected output path (if it builds): `android-app\app\build\outputs\apk\debug\ap
 adb devices                                   # phone must be listed as "device"
 adb install -r app\build\outputs\apk\debug\app-debug.apk
 ```
-## 6. Provide models (the app never downloads anything)
+## 6. Provide models (M4: the app downloads a model ONLY if you tap Download and confirm; importing still works)
 **Speech models** (make ZIPs on your PC, copy them to the phone, import in ViNT → mic icon → Voice → Speech models):
 ```powershell
 python tools\fetch_voice_models.py --out dist\voice-models --only sherpa-onnx-moonshine-tiny-en-int8 vits-piper-en_GB-northern_english_male-medium-int8

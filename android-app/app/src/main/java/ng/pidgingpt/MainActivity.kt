@@ -15,6 +15,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent { ViNTTheme { AppNav(vm) } }
     }
-    override fun onStop() { super.onStop(); vm.onAppBackgrounded() }      // leaving the app ends voice mode: mic, player and speech models are released
+    override fun onStart() { super.onStart(); vm.connectivity.start() }          // the network callback lives only while the app is visible
+    override fun onStop() { super.onStop(); vm.onAppBackgrounded(); vm.connectivity.stop() }      // leaving the app ends voice mode: mic, player and speech models are released
     override fun onTrimMemory(level: Int) { super.onTrimMemory(level); if (level >= TRIM_MEMORY_RUNNING_CRITICAL && !vm.generating) vm.unloadModel() }
 }

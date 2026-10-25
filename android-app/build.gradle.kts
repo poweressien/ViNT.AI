@@ -6,10 +6,9 @@ plugins {
 android {
     namespace = "ng.pidgingpt"
     compileSdk = 34
-    ndkVersion = "26.1.10909125"   // pinned (AGP 8.5.2 default); CI reads this value, keep in sync with docs/GITHUB_ACTIONS.md
     defaultConfig {
         applicationId = "ng.pidgingpt"; minSdk = 26; targetSdk = 34
-        versionCode = 3; versionName = "0.3.0-m3"
+        versionCode = 4; versionName = "0.4.0-m4"
         ndk { abiFilters += listOf("arm64-v8a") }   // 64-bit ARM phones only; add x86_64 for emulator testing
         externalNativeBuild { cmake { cppFlags += "-std=c++17"; arguments += listOf("-DGGML_OPENMP=OFF") } }
     }
@@ -38,5 +37,5 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
-    // NO okhttp / retrofit / firebase / analytics. Enforced by tools/audit_android_offline.py
+    // NO okhttp / retrofit / firebase / analytics: networking is plain HTTPS in ng/pidgingpt/net only. Enforced by tools/audit_android_offline.py
 }

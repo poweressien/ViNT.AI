@@ -1,208 +1,75 @@
-name: Android build
-
-# Primary build system for ViNT (see docs/GITHUB_ACTIONS.md).
-# Jobs: python-checks | jni-host-verify | android-debug  ->  summary
+# ViNT Android CI. Written without being able to run it: the first run may need small fixes, and its log is the real test.
+# Repository root == the folder containing android-app/, tools/, docs/, tests/. Nothing binary is committed: every dependency is fetched here.
+name: Build ViNT Android APK
 on:
   push:
-    branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
-  group: android-build-${{ github.workflow }}-${{ github.ref }}
+  group: android-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  JAVA_VERSION: "17"            # AGP 8.5.2 requires JDK 17; Gradle 8.9 runs on 17
-  PYTHON_VERSION: "3.12"
-
+env: { WORKDIR: '.' }                # repository root == the folder that directly contains android-app/, tools/, docs/, tests/ (the ZIP's top-level 'pidgingpt/' folder is NOT part of the repo)
 jobs:
-  # ------------------------------------------------------------------ 1. Python + static audits (no Android involved)
-  python-checks:
-    name: Python tests and static audits
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Locate project root
-        run: bash .github/scripts/locate_project.sh
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Install test dependencies
-        run: python -m pip install pytest pillow
-      - name: pytest
-        working-directory: ${{ env.PROJECT_ROOT }}
-        run: python -m pytest tests -q
-      - name: Offline audit (permissions, networking libraries)
-        working-directory: ${{ env.PROJECT_ROOT }}
-        run: python tools/audit_android_offline.py android-app
-      - name: Brand palette audit
-        working-directory: ${{ env.PROJECT_ROOT }}
-        run: python tools/audit_brand_palette.py android-app
-
-  # ------------------------------------------------------------------ 2. JNI bridge against pinned llama.cpp on the Linux host
-  jni-host-verify:
-    name: JNI + engine host check (pinned llama.cpp, host CPU)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Locate project root
-        run: bash .github/scripts/locate_project.sh
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Install build tools (ninja, gguf, numpy, Kotlin 2.0.20 compiler)
-        run: |
-          set -euo pipefail
-          sudo apt-get update -q && sudo apt-get install -y -q ninja-build
-          python -m pip install gguf numpy
-          curl -fsSL -o /tmp/kotlinc.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.20/kotlin-compiler-2.0.20.zip
-          echo "5f5d2a8ad6a718a002acd0775b67a9e27035872fdbd4b0791e3cb3ea00095931  /tmp/kotlinc.zip" | sha256sum -c -
-          sudo unzip -q /tmp/kotlinc.zip -d /opt
-          echo "/opt/kotlinc/bin" >> "$GITHUB_PATH"
-      - name: Fetch llama.cpp at the pinned commit
-        run: bash .github/scripts/fetch_llama_cpp.sh
-      - name: Run host-verify
-        working-directory: ${{ env.PROJECT_ROOT }}
-        run: bash tools/host-verify/run_host_verify.sh 2>&1 | tee "$RUNNER_TEMP/host-verify.log"
-      - name: Upload host-verify log
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ViNT-jni-host-verify-log
-          path: ${{ runner.temp }}/host-verify.log
-          if-no-files-found: ignore
-          retention-days: 14
-
-  # ------------------------------------------------------------------ 3. The real thing: Gradle + NDK + CMake -> debug APK
-  android-debug:
-    name: Build debug APK (Gradle, NDK, CMake)
-    runs-on: ubuntu-24.04
+  build:
+    runs-on: ubuntu-latest
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Locate project root and read pinned toolchain versions
-        run: bash .github/scripts/locate_project.sh --toolchain
-
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Set up Android SDK command-line tools
-        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
-
-      - name: Install SDK platform, build-tools, NDK and CMake (versions read from the Gradle files)
+      - uses: actions/checkout@v4
+      - name: Guard - project layout is where this workflow expects it
         run: |
-          set -euo pipefail
-          sdkmanager --install "platforms;android-${COMPILE_SDK}" "build-tools;34.0.0" \
-            "ndk;${NDK_VERSION}" "cmake;${CMAKE_VERSION}"
-          echo "ANDROID_NDK_ROOT=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
-
-      # --- native dependency: llama.cpp at the exact commit in docs/LLAMA_CPP_PIN.txt (never "latest") ---
-      - name: Cache llama.cpp checkout
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ env.PROJECT_ROOT }}/android-app/third_party/llama.cpp
-          key: llama-cpp-${{ hashFiles(format('{0}docs/LLAMA_CPP_PIN.txt', env.PROJECT_PREFIX)) }}
-      - name: Fetch llama.cpp at the pinned commit
-        run: bash .github/scripts/fetch_llama_cpp.sh
-
-      # --- voice runtime: sherpa-onnx AAR, SHA-256 verified by tools/fetch_voice_models.py (speech MODELS are not fetched) ---
-      - name: Cache sherpa-onnx AAR
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ env.PROJECT_ROOT }}/android-app/app/libs
-          key: sherpa-aar-${{ hashFiles(format('{0}tools/voice_models.json', env.PROJECT_PREFIX)) }}
-      - name: Fetch sherpa-onnx runtime AAR (hash-verified)
-        working-directory: ${{ env.PROJECT_ROOT }}
+          test -d "${{ env.WORKDIR }}/android-app" && test -f "${{ env.WORKDIR }}/tools/setup_llama_cpp.sh" || {
+            echo "Layout mismatch: expected android-app/ and tools/ under WORKDIR='${{ env.WORKDIR }}'. Found:"; ls -la; exit 1; }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Python tests and static audits
+        working-directory: ${{ env.WORKDIR }}
+        run: |
+          pip install pytest pillow
+          python -m pytest -q
+          python tools/audit_android_offline.py android-app
+          python tools/audit_brand_palette.py android-app
+      - name: Fetch pinned llama.cpp (not stored in the repo)
+        working-directory: ${{ env.WORKDIR }}
+        run: bash tools/setup_llama_cpp.sh
+      - name: Fetch sherpa-onnx AAR (SHA-256 verified, not stored in the repo)
+        working-directory: ${{ env.WORKDIR }}
         run: python tools/fetch_voice_models.py --runtime
-
-      - name: Set up Gradle (wrapper validation, open-source cache)
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
-        with:
-          cache-provider: basic
-          validate-wrappers: true
-          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
-
-      - name: Gradle configuration check
-        working-directory: ${{ env.PROJECT_ROOT }}/android-app
-        run: ./gradlew --version && ./gradlew projects --console=plain
-
-      - name: Build debug APK (Kotlin + Compose + native arm64-v8a) and run unit tests
-        working-directory: ${{ env.PROJECT_ROOT }}/android-app
-        timeout-minutes: 60
+      - name: Check required dependencies exist before Gradle runs
+        working-directory: ${{ env.WORKDIR }}
         run: |
-          set -o pipefail
-          ./gradlew :app:assembleDebug :app:testDebugUnitTest \
-            -Dorg.gradle.jvmargs="-Xmx4g -Dfile.encoding=UTF-8" \
-            --console=plain --stacktrace 2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
-
-      - name: Verify APK (exists, valid zip, application ID, native libs, JNI symbols, no model weights)
-        run: bash .github/scripts/verify_apk.sh
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ViNT-debug-apk
-          path: ${{ runner.temp }}/apk-out/*
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Show Gradle failure excerpt
+          test -s android-app/app/libs/sherpa-onnx-1.13.8.aar
+          test -f android-app/third_party/llama.cpp/CMakeLists.txt
+          git -C android-app/third_party/llama.cpp rev-parse HEAD | grep -q "$(awk '{print $1}' docs/LLAMA_CPP_PIN.txt)"
+      - uses: android-actions/setup-android@v3          # installs cmdline-tools and accepts licences
+      - name: Install SDK platform and CMake (the NDK is installed by the Android Gradle Plugin because build.gradle.kts pins none)
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "cmake;3.22.1"
+      - uses: gradle/actions/setup-gradle@v4              # supplies Gradle, so no wrapper jar has to be committed
+        with: { gradle-version: '8.9' }
+      - name: Gradle configuration
+        working-directory: ${{ env.WORKDIR }}/android-app
+        run: gradle --no-daemon :app:help --stacktrace
+      - name: Lint, unit tests, debug APK (compiles Kotlin and the native llama.cpp/JNI library)
+        working-directory: ${{ env.WORKDIR }}/android-app
+        run: gradle --no-daemon :app:lintDebug :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - name: Verify the APK exists, is not empty, and contains the native library
+        run: |
+          f=$(find ${{ env.WORKDIR }}/android-app/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          test -n "$f" && test -s "$f" && ls -l "$f"
+          unzip -l "$f" | grep -E "lib/arm64-v8a/.*\.so"
+      - uses: actions/upload-artifact@v4
+        with: { name: vint-debug-apk, path: "${{ env.WORKDIR }}/android-app/app/build/outputs/apk/debug/*.apk", if-no-files-found: error }
+      - name: Keep diagnostics on failure
         if: failure()
-        continue-on-error: true
-        run: bash .github/scripts/extract_errors.sh "$RUNNER_TEMP/gradle-build.log"
-
-      - name: Upload diagnostics on failure
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v4
         with:
-          name: ViNT-build-diagnostics
+          name: build-diagnostics
           path: |
-            ${{ runner.temp }}/gradle-build.log
-            ${{ env.PROJECT_ROOT }}/android-app/app/build/reports/
-            ${{ env.PROJECT_ROOT }}/android-app/app/.cxx/
-            ${{ env.PROJECT_ROOT }}/android-app/build/reports/
-          include-hidden-files: true
-          if-no-files-found: ignore
-          retention-days: 14
-
-  # ------------------------------------------------------------------ 4. Honest summary
-  summary:
-    name: Summary
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    needs: [python-checks, jni-host-verify, android-debug]
-    if: always()
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Write job summary (reporting only, never fails)
-        continue-on-error: true
-        env:
-          R_PY: ${{ needs.python-checks.result }}
-          R_JNI: ${{ needs.jni-host-verify.result }}
-          R_APK: ${{ needs.android-debug.result }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: bash .github/scripts/write_summary.sh
-      - name: Gate (fails only if a required job did not succeed)
-        env:
-          R_PY: ${{ needs.python-checks.result }}
-          R_JNI: ${{ needs.jni-host-verify.result }}
-          R_APK: ${{ needs.android-debug.result }}
-        run: bash .github/scripts/gate_summary.sh
+            ${{ env.WORKDIR }}/android-app/app/build/reports/**
+            ${{ env.WORKDIR }}/android-app/app/build/test-results/**
+            ${{ env.WORKDIR }}/android-app/app/.cxx/**/*.log

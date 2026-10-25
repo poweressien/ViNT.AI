@@ -6,6 +6,8 @@ object Prompts {
     /** [voice]=true adds spoken-conversation rules. UNTESTED with a real Pidgin model: it is a design choice, not a measured improvement. */
     fun system(mode: LanguageMode, voice: Boolean = false, noThink: Boolean = false): String = base(mode) + (if (voice) VOICE_NOTE else "") + (if (noThink) " /no_think" else "")      // /no_think: Qwen3-family soft switch that disables reasoning output
 
+    /** Read-only access for PromptBuilder; the literal stays private so tests/test_baseline.py validates the one real text. */
+    fun voiceNote(): String = VOICE_NOTE
     private const val VOICE_NOTE = " The user is talking to you by voice, and their words come from automatic speech recognition, which often mis-hears Pidgin words (for example 'wetin dey' can arrive as 'wet and day'). Work out the meaning from context, and if a message makes no sense, ask them to say it again. Reply in 1 to 3 short spoken sentences. No lists, no markdown, no emoji."
 
     private fun base(mode: LanguageMode): String = when (mode) {

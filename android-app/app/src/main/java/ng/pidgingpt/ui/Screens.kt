@@ -36,16 +36,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import ng.pidgingpt.ChatViewModel
+import ng.pidgingpt.ai.*
+import ng.pidgingpt.net.CatalogEntry
+import ng.pidgingpt.net.ModelCatalog
+import ng.pidgingpt.net.OnlineAuth
+import ng.pidgingpt.net.OnlineConfigValidator
 import ng.pidgingpt.data.*
 import ng.pidgingpt.inference.EngineState
 import ng.pidgingpt.inference.GenState
 import java.text.DateFormat
 import java.util.Date
 
-enum class Screen { Onboarding, Chat, History, Dictionary, Model, Voice, Settings, About }
+enum class Screen { Onboarding, Chat, History, Dictionary, Model, Voice, Settings, AiSettings, About }
 
-const val TAGLINE = "Your Pidgin. Your AI. Offline."
+const val TAGLINE = "Your Pidgin. Your AI. Offline."   // still true: offline works with no account, and online AI is off until you allow it
 
 @Composable fun AppNav(vm: ChatViewModel) {
     var screen by remember { mutableStateOf(if (vm.settings.onboarded) Screen.Chat else Screen.Onboarding) }
@@ -60,6 +68,7 @@ const val TAGLINE = "Your Pidgin. Your AI. Offline."
                 Screen.Model -> ModelScreen(vm) { screen = Screen.Chat }
                 Screen.Voice -> VoiceScreen(vm, goModel = { screen = Screen.Model }) { screen = Screen.Chat }
                 Screen.Settings -> SettingsScreen(vm) { screen = Screen.Chat }
+                Screen.AiSettings -> AiSettingsScreen(vm) { screen = Screen.Chat }
                 Screen.About -> AboutScreen(vm) { screen = Screen.Chat }
             }
         }
@@ -92,13 +101,13 @@ const val TAGLINE = "Your Pidgin. Your AI. Offline."
 
 @Composable internal fun Section(title: String) = Text(title.uppercase(), fontSize = 11.sp, letterSpacing = 1.2.sp, color = Palette.Green, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
 
-private fun statusLabel(e: EngineState, g: GenState): String = when {
-    g is GenState.Generating -> "Generating…"
-    e is EngineState.Loading -> "Loading model…"
-    e is EngineState.Ready -> "Ready · ${e.modelName}"
-    e is EngineState.Failed -> "Model failed to load"
-    e is EngineState.Unloaded -> "Model not loaded"
-    else -> "No model installed"
+private fun providerName(k: String?): String = when (k) { "ONLINE" -> "Cloud AI (online)"; "LOCAL_PIDGIN" -> "Local Pidgin model"; "LOCAL_ENGLISH" -> "Local English model"; else -> "" }
+
+private fun netText(n: NetworkState): String {
+    val t = n.transport.name.lowercase().replaceFirstChar { it.uppercase() }
+    return when { !n.known -> "Checking the network\u2026"; !n.connected -> "No network connection."
+        !n.validated -> "Connected over $t, but Android found no working internet on this network (sign-in page, no data, or DNS problem)."
+        else -> "Internet available over $t." }
 }
 
 // ---------------------------------------------------------------- onboarding
@@ -109,9 +118,9 @@ private fun statusLabel(e: EngineState, g: GenState): String = when {
         Text("ViNT", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Palette.White)
         Spacer(Modifier.height(6.dp)); Text(TAGLINE, fontSize = 16.sp, color = Palette.TextSecondary, textAlign = TextAlign.Center)
         Spacer(Modifier.height(32.dp))
-        listOf(Icons.Default.AirplanemodeActive to "Works offline. Chat runs on your phone, so airplane mode is fine.",
-            Icons.Default.Lock to "Private. Chats, settings and the slang dictionary stay on this device.",
-            Icons.Default.Memory to "Needs a real model file. ViNT does not download one. You import a .gguf yourself, and until you do, chat stays off.").forEach { (i, t) ->
+        listOf(Icons.Default.AirplanemodeActive to "Works offline. Chat runs on your phone, so airplane mode is fine. Online AI is optional and off until you allow it.",
+            Icons.Default.Lock to "Private. Chats stay on this device. Messages leave it only if you turn on online AI, and never in Offline Only.",
+            Icons.Default.Memory to "Needs a model. Download the English model when you tap Download (about 1 GB), or import a .gguf yourself. Nothing downloads without your tap.").forEach { (i, t) ->
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp).vintCard().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(i, null, tint = Palette.Green); Spacer(Modifier.width(14.dp)); Text(t, color = Palette.White, fontSize = 14.sp, lineHeight = 20.sp) } }
         Spacer(Modifier.height(28.dp)); VintButton("Continue", done, Modifier.fillMaxWidth())
@@ -126,11 +135,12 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable fun ChatScreen(vm: ChatViewModel, go: (Screen) -> Unit) {
     val msgs by vm.messages.collectAsState(); val engine by vm.engineState.collectAsState(); val gen by vm.genState.collectAsState()
-    val stats by vm.lastStats.collectAsState()
+    val lastRun by vm.lastRun.collectAsState(); val status by vm.providerStatus.collectAsState(); val restored by vm.restoredDraft.collectAsState()
     var input by remember { mutableStateOf("") }; var menu by remember { mutableStateOf(false) }; var confirmClear by remember { mutableStateOf(false) }
     val list = rememberLazyListState(); val scope = rememberCoroutineScope(); val ctx = LocalContext.current
-    val ready = engine is EngineState.Ready; val busy = gen is GenState.Generating
+    val ready = status.selected != null; val busy = gen is GenState.Generating
     LaunchedEffect(msgs.size, msgs.lastOrNull()?.content?.length) { if (msgs.isNotEmpty()) list.scrollToItem(msgs.lastIndex) }
+    LaunchedEffect(restored) { restored?.let { input = it; vm.consumeDraft() } }        // a message is never lost when no model can answer: it comes back into the box
 
     if (confirmClear) VintDialog("Clear this conversation?", "This deletes it from your phone. It cannot be undone.", "Clear", { confirmClear = false; vm.deleteChat(vm.conversationId) }, { confirmClear = false })
 
@@ -140,7 +150,7 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
                 BrandMark(30.dp); Spacer(Modifier.width(10.dp))
                 Column { Text("ViNT", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Row(verticalAlignment = Alignment.CenterVertically) { StatusDot(ready); Spacer(Modifier.width(6.dp))
-                        Text(statusLabel(engine, gen), fontSize = 11.sp, color = Palette.TextSecondary, maxLines = 1) } } } },
+                        Text(if (busy) "Generating\u2026" else status.label, fontSize = 11.sp, color = Palette.TextSecondary, maxLines = 1) } } } },
             actions = {
                 IconButton({ vm.newChat() }, colors = vintIconButtonColors()) { Icon(Icons.Default.Add, "New conversation") }
                 IconButton({ go(Screen.Voice) }, colors = vintIconButtonColors()) { Icon(Icons.Default.Mic, "Voice chat") }
@@ -148,7 +158,7 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
                 Box {
                     IconButton({ menu = true }, colors = vintIconButtonColors()) { Icon(Icons.Default.MoreVert, "More") }
                     DropdownMenu(menu, { menu = false }, containerColor = Palette.Surface, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Palette.Border)) {
-                        listOf("Slang dictionary" to Screen.Dictionary, "Model" to Screen.Model, "Settings & privacy" to Screen.Settings, "About ViNT" to Screen.About)
+                        listOf("Slang dictionary" to Screen.Dictionary, "Model" to Screen.Model, "AI mode & online" to Screen.AiSettings, "Settings & privacy" to Screen.Settings, "About ViNT" to Screen.About)
                             .forEach { (n, s) -> DropdownMenuItem(text = { Text(n, color = Palette.White) }, onClick = { menu = false; go(s) }) }
                         HorizontalDivider(color = Palette.Border)
                         DropdownMenuItem(text = { Text("Clear this conversation", color = Palette.White) }, onClick = { menu = false; confirmClear = true })
@@ -156,15 +166,22 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
     }, bottomBar = {
         Column(Modifier.background(Palette.Background).imePadding().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             when (val g = gen) {
-                is GenState.Failed -> Notice(g.message, onClick = { vm.dismissGenError() })
+                is GenState.Failed -> {
+                    Notice(g.message, onClick = { vm.dismissGenError() })
+                    if (msgs.lastOrNull()?.role == "assistant") Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        VintOutlinedButton("Retry", { vm.retry() }); VintOutlinedButton("Retry offline", { vm.retry(ProviderKind.LOCAL_ENGLISH) }) }
+                }
                 is GenState.Cancelled -> Notice("Generation stopped after ${g.tokens} tokens. The partial reply is saved.", Icons.Default.Info) { vm.dismissGenError() }
                 else -> {}
             }
             if (busy) VintProgress(Modifier.fillMaxWidth())
-            else stats?.let { Text("%.1f tokens/s · %d tokens".format(it.tokensPerSec, it.tokens), fontSize = 10.sp, color = Palette.TextSecondary, modifier = Modifier.padding(start = 12.dp)) }
+            else lastRun?.let { Text(listOfNotNull(it.providerLabel, it.detail, it.switchNote).joinToString(" \u00b7 "), fontSize = 10.sp, color = Palette.TextSecondary, modifier = Modifier.padding(start = 12.dp)) }
+            if (!busy && status.willSendOnline) Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Cloud, null, tint = Palette.Green, modifier = Modifier.size(14.dp)); Spacer(Modifier.width(6.dp))
+                Text("Your next message will be sent online (Cloud AI).", fontSize = 11.sp, color = Palette.White) }
             Row(verticalAlignment = Alignment.Bottom) {
                 OutlinedTextField(input, { input = it }, Modifier.weight(1f), enabled = ready,
-                    placeholder = { Text(if (ready) "Talk to ViNT…" else "Load a model to chat") }, maxLines = 5,
+                    placeholder = { Text(if (ready) "Talk to ViNT…" else "Set up a model to chat") }, maxLines = 5,
                     shape = RoundedCornerShape(28.dp), colors = vintTextFieldColors())
                 Spacer(Modifier.width(8.dp))
                 if (busy) FilledIconButton({ vm.stop() }, Modifier.size(52.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = Palette.Surface, contentColor = Palette.Green)) { Icon(Icons.Default.Stop, "Stop generating") }
@@ -187,6 +204,7 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
                         Column(Modifier.widthIn(max = 320.dp).let { if (mine) it.background(Palette.Green, BubbleShape) else it.vintCard(BubbleShape) }.padding(14.dp)) {
                             Text(m.content.ifEmpty { "…" }, color = if (mine) Palette.OnGreen else Palette.White, lineHeight = 22.sp)
+                            if (!mine && m.content.isNotEmpty() && providerName(m.provider).isNotEmpty()) secondary(providerName(m.provider), 10)
                             if (!mine && m.content.isNotEmpty()) IconButton({ (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("ViNT", m.content)) },
                                 Modifier.size(32.dp).align(Alignment.End), colors = vintIconButtonColors()) { Icon(Icons.Default.ContentCopy, "Copy response", Modifier.size(16.dp), tint = Palette.TextSecondary) }
                         } } }
@@ -202,7 +220,7 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
         BrandMark(48.dp)
         when (engine) {
             EngineState.NotInstalled -> { Text("No model installed", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                secondary("ViNT answers with a real language model that runs on your phone. None is installed yet, so chat is off. Import a .gguf model file to begin.", 14)
+                secondary("ViNT answers with a language model that runs on your phone. None is installed yet. Download the English model or import a .gguf file. You can also turn on online AI in AI settings.", 14)
                 VintButton("Set up model", onSetup, Modifier.fillMaxWidth()) }
             EngineState.Unloaded -> { Text("Model not loaded", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                 secondary("A model file is on this phone but it is not loaded into memory yet.", 14)
@@ -287,7 +305,7 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
         err = null; msg = null; progress = 0
         scope.launch(Dispatchers.IO) {
             vm.models.import(uri, name) { progress = it }
-                .onSuccess { vm.settings.modelFileName = it.file.name; msg = "Imported ${it.file.name}. SHA-256 ${it.sha256}. Not loaded yet: tap Load." }
+                .onSuccess { vm.settings.modelFileName = it.file.name; vm.registerImported(it); msg = "Imported ${it.file.name}. SHA-256 ${it.sha256}. Not loaded yet: tap Load." }
                 .onFailure { err = it.message ?: "Import failed." }
             progress = null; vm.refreshModelState(); tick++
         }
@@ -296,7 +314,7 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
     toDelete?.let { m -> VintDialog("Delete model?", "${m.file.name} (${Formatter.formatFileSize(ctx, m.sizeBytes)}) will be removed from this phone.", "Delete", { vm.deleteModel(m); toDelete = null; tick++ }, { toDelete = null }) }
 
     Page("Model", onBack) {
-        secondary("ViNT runs a language model that you import as a .gguf file. Nothing is downloaded by the app. Copy the file to your phone first, then import it here.", 14)
+        secondary("ViNT runs a language model on your phone. Download the English model below (only when you tap Download), or import a .gguf file you already have. Models stay in this app\u2019s private storage.", 14)
         when (val s = engine) {
             EngineState.NotInstalled -> Notice("No model installed. Chat will not work until you import a real model.", Icons.Default.Info)
             is EngineState.Failed -> Notice(s.message)
@@ -307,6 +325,8 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
         err?.let { Notice(it) }; msg?.let { secondary(it, 12) }
         VintButton("Import .gguf model", { picker.launch(arrayOf("*/*")) }, Modifier.fillMaxWidth(), enabled = progress == null)
         secondary("Free storage: ${Formatter.formatFileSize(ctx, vm.models.freeStorageBytes())} · Models: ${Formatter.formatFileSize(ctx, vm.models.totalModelBytes())}", 12)
+        Section("Download (uses the internet, only when you tap)")
+        ModelCatalog.all.forEach { DownloadCard(vm, it) { tick++ } }
         if (list.isNotEmpty()) Section("Installed")
         list.forEach { m ->
             val g = m.gguf; val c = vm.models.compat(m, vm.settings.contextTokens)
@@ -319,11 +339,174 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
                     g.contextLength?.let { "Trained context: $it" }, g.blockCount?.let { "Layers: $it" }, "Chat template: ${if (g.hasChatTemplate) "included" else "missing (default used)"}").joinToString(" · "), 12)
                 if (g?.license != null) secondary("License (from file): ${g.license}", 12) else secondary("License: not stated in the file. Check the model's source before sharing.", 12)
                 c.warning?.let { Notice(it, if (c.ok) Icons.Default.Info else Icons.Default.ErrorOutline) }
+                ProfileBlock(vm, m) { tick++ }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (isReady) VintOutlinedButton("Unload", { vm.unloadModel() }) else VintButton("Load", { vm.loadModel(m.file.name) }, enabled = c.ok && engine !is EngineState.Loading)
                     VintOutlinedButton("Delete", { toDelete = m }) } }
         }
         secondary("“Ready” appears only after the on-device runtime has loaded the model successfully. A model that is merely installed is never reported as ready. A general-purpose model is not a Pidgin-trained model: see Settings → About for what is and is not verified.", 12)
+    }
+}
+
+@Composable private fun DownloadCard(vm: ChatViewModel, entry: CatalogEntry, onDone: () -> Unit) {
+    val ctx = LocalContext.current; val dl by vm.download.collectAsState(); var confirm by remember { mutableStateOf(false) }; var tick by remember { mutableIntStateOf(0) }
+    val mine = dl?.takeIf { it.entryId == entry.id }
+    val partial = remember(mine, tick) { vm.partialBytes(entry) }
+    val installed = remember(mine) { vm.models.list().any { it.file.name == entry.fileName } }
+    LaunchedEffect(mine?.finished) { if (mine?.finished == true) onDone() }
+    fun sz(b: Long) = Formatter.formatFileSize(ctx, b)
+    if (confirm) VintDialog("Download ${entry.displayName}?",
+        "ViNT will use the internet to download this file:\n${entry.url}\n\nSize: ${entry.sizeText}\nLicense: ${entry.license}\nFree storage: ${sz(vm.models.freeStorageBytes())}\n\nIt is saved only on this phone and checked before it is installed. You can delete it any time. Nothing from your chats is sent.",
+        if (partial > 0) "Resume" else "Download", { confirm = false; vm.downloadModel(entry) }, { confirm = false })
+    Column(Modifier.fillMaxWidth().vintCard().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(entry.displayName, fontWeight = FontWeight.Bold)
+        secondary(entry.notes, 12)
+        secondary("Size: ${entry.sizeText} \u00b7 License: ${entry.license} (${entry.licenseSource})", 12)
+        secondary("Integrity: the file is checked against the checksum the file host reports, then validated as a GGUF. No pinned checksum is recorded for it yet.", 11)
+        if (mine?.running == true) {
+            val pct = if (mine.total > 0) " (${(mine.done * 100 / mine.total).toInt()}%)" else ""
+            secondary("Downloading\u2026 ${sz(mine.done)}${if (mine.total > 0) " of ${sz(mine.total)}" else ""}$pct", 13); VintProgress(Modifier.fillMaxWidth())
+            VintOutlinedButton("Cancel", { vm.cancelDownload() })
+        } else {
+            mine?.message?.let { if (mine.finished) secondary(it, 12) else Notice(it) }
+            if (!installed) VintButton(if (partial > 0) "Resume download (${sz(partial)} already saved)" else "Download", { confirm = true }, Modifier.fillMaxWidth())
+            else secondary("Installed.", 12)
+            if (partial > 0 && !installed) VintOutlinedButton("Discard partial file", { vm.discardPartial(entry); tick++ })
+        }
+    }
+}
+
+@Composable private fun ProfileBlock(vm: ChatViewModel, m: ModelInfo, onChange: () -> Unit) {
+    val p = vm.profileOf(m); var dialog by remember { mutableStateOf(false) }
+    secondary("Source: ${p.provenance}", 11)
+    p.integrity?.let { secondary("Integrity: $it", 11) }
+    secondary("Runtime on this phone: " + when (p.runtime) { RuntimeStatus.LOADED_OK -> "loaded successfully"; RuntimeStatus.LOAD_FAILED -> "failed to load" + (p.runtimeNote?.let { " ($it)" } ?: ""); RuntimeStatus.UNVERIFIED -> "not tested yet" }, 11)
+    secondary(if (p.pidginEligible) "Pidgin: marked available (${if (p.pidginEvidence == Evidence.EVALUATED) "you evaluated it" else "you configured it"}). It answers Pidgin requests; the English model stays the fallback."
+        else "Pidgin: unverified. This model is used for English until you mark it as your Pidgin model.", 11)
+    if (p.pidginEligible) VintOutlinedButton("Stop using as Pidgin model", { vm.unmarkPidgin(m); onChange() })
+    else VintOutlinedButton("This is my Pidgin model\u2026", { dialog = true })
+    if (dialog) PidginDialog({ dialog = false }) { ev, note -> vm.markPidginCapable(m, ev, note); dialog = false; onChange() }
+}
+
+@Composable private fun PidginDialog(onDismiss: () -> Unit, onConfirm: (Evidence, String) -> Unit) {
+    var ev by remember { mutableStateOf(Evidence.USER_CONFIGURED) }; var note by remember { mutableStateOf("") }
+    AlertDialog({ onDismiss() }, shape = CardShape, containerColor = Palette.Surface, tonalElevation = 0.dp, titleContentColor = Palette.White, textContentColor = Palette.TextSecondary,
+        title = { Text("Use as Pidgin model") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            secondary("ViNT will prefer this model for Nigerian Pidgin requests, and fall back to the English model if it fails. Only do this if it is true.", 13)
+            Row(Modifier.clickable { ev = Evidence.EVALUATED }, verticalAlignment = Alignment.CenterVertically) { RadioButton(ev == Evidence.EVALUATED, { ev = Evidence.EVALUATED }, colors = vintRadioColors()); Text("I evaluated it on Pidgin and it passed", fontSize = 13.sp, color = Palette.White) }
+            Row(Modifier.clickable { ev = Evidence.USER_CONFIGURED }, verticalAlignment = Alignment.CenterVertically) { RadioButton(ev == Evidence.USER_CONFIGURED, { ev = Evidence.USER_CONFIGURED }, colors = vintRadioColors()); Text("It is my own Pidgin model and I choose to use it", fontSize = 13.sp, color = Palette.White) }
+            OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") }, singleLine = true, shape = PillShape, colors = vintTextFieldColors()) } },
+        confirmButton = { VintTextButton("Use it", { onConfirm(ev, note) }) },
+        dismissButton = { TextButton({ onDismiss() }, colors = ButtonDefaults.textButtonColors(contentColor = Palette.White)) { Text("Cancel") } })
+}
+
+// ---------------------------------------------------------------- AI settings (mode, online service, language, voice)
+
+@Composable private fun ChoiceRow(selected: Boolean, label: String, hint: String? = null, enabled: Boolean = true, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
+        RadioButton(selected, { onClick() }, enabled = enabled, colors = vintRadioColors()); Spacer(Modifier.width(6.dp))
+        Column { Text(label, fontSize = 14.sp, color = if (enabled) Palette.White else Palette.TextDisabled); if (hint != null) secondary(hint, 12) }
+    }
+}
+
+@Composable private fun SwitchRow(label: String, hint: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) { Text(label, fontSize = 14.sp); secondary(hint, 12) }
+        Spacer(Modifier.width(8.dp)); VintSwitch(checked, onChange)
+    }
+}
+
+@Composable fun AiSettingsScreen(vm: ChatViewModel, onBack: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val status by vm.providerStatus.collectAsState(); val net by vm.connectivity.state.collectAsState()
+    var mode by remember { mutableStateOf(vm.settings.aiMode) }; var lang by remember { mutableStateOf(vm.settings.responseLanguage) }
+    var pref by remember { mutableStateOf(vm.settings.preferredProvider) }; var consent by remember { mutableStateOf(vm.settings.onlineConsent) }
+    var url by remember { mutableStateOf(vm.settings.onlineBaseUrl) }; var model by remember { mutableStateOf(vm.settings.onlineModel) }
+    var auth by remember { mutableStateOf(vm.settings.onlineAuth) }; var secret by remember { mutableStateOf("") }; var hasSecret by remember { mutableStateOf(vm.secrets.hasSecret) }
+    var voiceOnline by remember { mutableStateOf(vm.settings.onlineInVoice) }; var speak by remember { mutableStateOf(vm.settings.speakReplies) }
+    var help by remember { mutableStateOf(vm.settings.pidginHelp) }
+    var testMsg by remember { mutableStateOf<String?>(null) }; var testing by remember { mutableStateOf(false) }
+    var askConsent by remember { mutableStateOf(false) }; var clear by remember { mutableStateOf(false) }
+    fun changed() { vm.onAiSettingsChanged() }
+    val problems = OnlineConfigValidator.validate(vm.onlineConfig(), hasSecret)
+    val keyLooksLikeProviderKey = auth == OnlineAuth.PROXY && secret.isNotBlank() && OnlineConfigValidator.looksLikeProviderKey(secret)
+
+    if (askConsent) VintDialog("Allow online AI?",
+        "When ViNT uses the online service, the text of your messages and the recent conversation are sent over HTTPS to the address you configure. That service has its own privacy policy, and may charge you. Microphone audio is never sent. Offline only always blocks this. You can switch it off at any time.",
+        "Allow", { askConsent = false; consent = true; vm.settings.onlineConsent = true; changed() }, { askConsent = false })
+    if (clear) VintDialog("Clear all history?", "Every saved conversation will be deleted from your phone.", "Clear all", { vm.clearAllChats(); clear = false }, { clear = false })
+
+    Page("AI mode & online", onBack) {
+        Section("Right now")
+        Column(Modifier.fillMaxWidth().vintCard().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) { StatusDot(status.selected != null); Spacer(Modifier.width(8.dp)); Text(status.label, fontWeight = FontWeight.SemiBold) }
+            status.detail?.let { secondary(it, 12) }
+            secondary("Network: ${netText(net)}", 12)
+            secondary("This shows the provider the next message would use, not just whether Wi-Fi is connected.", 11)
+        }
+
+        Section("AI mode")
+        Column(Modifier.fillMaxWidth().vintCard().padding(8.dp)) {
+            ChoiceRow(mode == AiMode.AUTOMATIC, "Automatic", "Online when it is allowed and the internet works, otherwise on this phone. A verified local Pidgin model answers Pidgin first.") { mode = AiMode.AUTOMATIC; vm.settings.aiMode = mode; changed() }
+            ChoiceRow(mode == AiMode.ONLINE_PREFERRED, "Online preferred", "Always try online first when allowed. Falls back to this phone if the service fails.") { mode = AiMode.ONLINE_PREFERRED; vm.settings.aiMode = mode; changed() }
+            ChoiceRow(mode == AiMode.OFFLINE_ONLY, "Offline only", "Nothing you type is ever sent online. Only models on this phone answer.") { mode = AiMode.OFFLINE_ONLY; vm.settings.aiMode = mode; changed() }
+        }
+        secondary("A reply already in progress is never restarted when the connection changes. The new setting applies to your next message.", 12)
+
+        Section("Model choice")
+        Column(Modifier.fillMaxWidth().vintCard().padding(8.dp)) {
+            ChoiceRow(pref == null, "Automatic") { pref = null; vm.settings.preferredProvider = null; changed() }
+            ChoiceRow(pref == ProviderKind.LOCAL_ENGLISH, "Local English model first") { pref = ProviderKind.LOCAL_ENGLISH; vm.settings.preferredProvider = pref; changed() }
+            ChoiceRow(pref == ProviderKind.LOCAL_PIDGIN, "Local Pidgin model first", "Only works once you have marked a model as your Pidgin model (Model screen).") { pref = ProviderKind.LOCAL_PIDGIN; vm.settings.preferredProvider = pref; changed() }
+            ChoiceRow(pref == ProviderKind.ONLINE, "Online first", "Ignored in Offline only mode.") { pref = ProviderKind.ONLINE; vm.settings.preferredProvider = pref; changed() }
+        }
+
+        Section("Reply language")
+        Column(Modifier.fillMaxWidth().vintCard().padding(8.dp)) {
+            ChoiceRow(lang == ResponseLanguage.AUTOMATIC, "Automatic", "ViNT estimates from your message and follows you, including mixed English and Pidgin. Your words are never translated or changed.") { lang = ResponseLanguage.AUTOMATIC; vm.settings.responseLanguage = lang; changed() }
+            ChoiceRow(lang == ResponseLanguage.ENGLISH, "English") { lang = ResponseLanguage.ENGLISH; vm.settings.responseLanguage = lang; changed() }
+            ChoiceRow(lang == ResponseLanguage.PIDGIN, "Nigerian Pidgin", "The style (natural or strict) is set in Settings & privacy.") { lang = ResponseLanguage.PIDGIN; vm.settings.responseLanguage = lang; changed() }
+        }
+        secondary("An English-only model\u2019s Pidgin is unverified. Treat it as an observed ability, not fluency.", 12)
+        OutlinedTextField(help, { help = it; vm.settings.pidginHelp = it }, Modifier.fillMaxWidth(), label = { Text("Instruction for English models about Pidgin") }, minLines = 2, maxLines = 5, shape = RoundedCornerShape(20.dp), colors = vintTextFieldColors())
+        VintOutlinedButton("Reset instruction", { help = PromptBuilder.DEFAULT_PIDGIN_HELP; vm.settings.pidginHelp = help })
+
+        Section("Online service")
+        Column(Modifier.fillMaxWidth().vintCard().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SwitchRow("Allow sending my messages online", "Off by default. Needed before any message can leave this phone.", consent) { on -> if (on) askConsent = true else { consent = false; vm.settings.onlineConsent = false; changed() } }
+            secondary("Works with any OpenAI-compatible chat endpoint over HTTPS. For anything you share with other people, point this at your own backend proxy, which holds the provider\u2019s secret. ViNT cannot know your provider\u2019s price or quota: check them yourself.", 12)
+            OutlinedTextField(url, { url = it; vm.settings.onlineBaseUrl = it; changed() }, Modifier.fillMaxWidth(), label = { Text("Service address (https://\u2026/v1)") }, singleLine = true, shape = PillShape, colors = vintTextFieldColors())
+            OutlinedTextField(model, { model = it; vm.settings.onlineModel = it; changed() }, Modifier.fillMaxWidth(), label = { Text("Model name") }, singleLine = true, shape = PillShape, colors = vintTextFieldColors())
+            ChoiceRow(auth == OnlineAuth.PROXY, "My backend proxy (recommended)", "No provider key on this phone. An access token for your proxy is optional.") { auth = OnlineAuth.PROXY; vm.settings.onlineAuth = auth; changed() }
+            ChoiceRow(auth == OnlineAuth.DIRECT_DEV_KEY, "My own provider key (testing only)", if (vm.isDebuggableBuild) "Stored encrypted on this phone. Not secure for public distribution." else "Disabled: only debug builds may hold a provider key.", enabled = vm.isDebuggableBuild) { auth = OnlineAuth.DIRECT_DEV_KEY; vm.settings.onlineAuth = auth; changed() }
+            if (auth == OnlineAuth.DIRECT_DEV_KEY) Notice("A key typed into an app can be extracted from the phone. Use a key with a spending limit, and never ship this build to other people.", Icons.Default.Info)
+            OutlinedTextField(secret, { secret = it }, Modifier.fillMaxWidth(), label = { Text(if (auth == OnlineAuth.PROXY) "Proxy access token (optional)" else "Provider key") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), shape = PillShape, colors = vintTextFieldColors())
+            if (keyLooksLikeProviderKey) Notice("That looks like a provider API key. Do not put one in the proxy token field: the proxy should hold it.")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                VintButton("Save", { vm.secrets.put(secret); secret = ""; hasSecret = vm.secrets.hasSecret; changed() }, enabled = secret.isNotBlank() && !keyLooksLikeProviderKey)
+                VintOutlinedButton("Remove saved", { vm.secrets.put(null); hasSecret = false; changed() }, enabled = hasSecret)
+            }
+            secondary(if (hasSecret) "A secret is saved (encrypted, never shown again)." else "No secret saved.", 12)
+            problems.forEach { secondary("\u2022 $it", 12) }
+            VintOutlinedButton(if (testing) "Testing\u2026" else "Test connection", {
+                testing = true; testMsg = null
+                scope.launch(Dispatchers.IO) { val r = vm.onlineProvider.testConnection(); testMsg = r.fold({ it }, { it.message ?: "The test failed." }); testing = false; if (r.isSuccess) vm.onAiSettingsChanged() }
+            }, enabled = !testing && mode != AiMode.OFFLINE_ONLY && problems.isEmpty())
+            secondary(if (mode == AiMode.OFFLINE_ONLY) "Test is off in Offline only mode." else "Sends one tiny test message that contains none of your chats.", 11)
+            testMsg?.let { secondary(it, 12) }
+        }
+
+        Section("Voice")
+        Column(Modifier.fillMaxWidth().vintCard().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SwitchRow("Speak replies in voice mode", "Needs a voice installed (Voice screen). Voices run on this phone and do not need the internet.", speak) { speak = it; vm.settings.speakReplies = it }
+            SwitchRow("Allow online AI in voice mode", "Off by default. Speech recognition and speech output always stay on this phone. If you turn this on, only the recognised text is sent online, never audio.", voiceOnline) { voiceOnline = it; vm.settings.onlineInVoice = it; changed() }
+            secondary("No installed voice is a tested Nigerian accent. Voices are labelled honestly on the Voice screen.", 12)
+        }
+
+        Section("History")
+        VintOutlinedButton("Clear all local conversation history", { clear = true }, Modifier.fillMaxWidth().padding(bottom = 12.dp))
     }
 }
 
@@ -365,11 +548,11 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
         Section("Privacy & offline status")
         Column(Modifier.fillMaxWidth().vintCard().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             fun row(ok: Boolean?, t: String) = @Composable { Row(verticalAlignment = Alignment.Top) { Icon(if (ok == true) Icons.Default.CheckCircle else Icons.Default.Info, null, tint = if (ok == true) Palette.Green else Palette.TextSecondary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(t, fontSize = 13.sp) } }
-            row(hasInternet?.not(), if (hasInternet == false) "This app declares no network permission." else if (hasInternet == true) "This build declares the INTERNET permission." else "Could not read this app's permissions.")()
-            row(true, "Replies are generated on this phone by the model you import.")()
+            row(null, if (hasInternet == true) "This build can use the internet for two things only: online AI (off until you allow it, and never used in Offline only mode) and model downloads you start yourself." else if (hasInternet == false) "This build declares no network permission, so online AI and downloads cannot work." else "Could not read this app's permissions.")()
+            row(true, "Replies come from the model on this phone unless you allow online AI in AI settings. The status line always names the provider.")()
             row(true, "Microphone is used only while voice mode is on and you are talking. Speech recognition and speech output run on this phone. Audio is never saved or sent.")()
             row(true, "Chats, settings and the slang dictionary are stored only on this phone.")()
-            row(null, "This checks what the app declares. It is not a traffic audit. To check for yourself, switch on airplane mode and chat.")() }
+            row(null, "This checks what the app declares. It is not a traffic audit. To check for yourself, switch on airplane mode, or choose Offline only, and chat.")() }
     }
 }
 
@@ -400,6 +583,6 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
         Section("Limitations")
         Column(Modifier.fillMaxWidth().vintCard().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf("Reply quality depends entirely on the model you import. It can be wrong, stiff, or invent facts.", "Slang meanings the model has not learned may be guessed. Check anything important.",
-                "Speed and memory depend on your phone. Large models may not run.", "Version $version is an early build. Offline behaviour should be confirmed on your own device.").forEach { secondary("• $it", 13) } }
+                "Online AI, if you turn it on, is a third-party service with its own terms, price and privacy policy. ViNT cannot verify them.", "Speed and memory depend on your phone. Large models may not run.", "Version $version is an early build. Offline behaviour should be confirmed on your own device.").forEach { secondary("• $it", 13) } }
     }
 }

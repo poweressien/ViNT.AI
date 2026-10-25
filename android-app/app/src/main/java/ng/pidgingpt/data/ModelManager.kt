@@ -5,13 +5,15 @@ import android.content.Context
 import android.net.Uri
 import java.io.File
 import java.security.MessageDigest
+import ng.pidgingpt.net.ModelStorage
 
 data class ModelInfo(val file: File, val sizeBytes: Long, val gguf: GgufInfo?, val headerError: String?, val sha256: String? = null)
 data class Compat(val ok: Boolean, val warning: String?)
 
-/** Models are IMPORTED from device storage through the system file picker. ViNT never downloads anything. */
-class ModelManager(private val ctx: Context) {
+/** Models arrive by import (system file picker, no permission) or by an explicit, user-confirmed download (ng.pidgingpt.net.ModelDownloader). Files live in app-private storage. */
+class ModelManager(private val ctx: Context) : ModelStorage {
     private val dir = File(ctx.filesDir, "models").apply { mkdirs() }
+    override val modelDir: File get() = dir
 
     fun list(): List<ModelInfo> = dir.listFiles { f -> f.isFile && f.extension == "gguf" }.orEmpty().sortedBy { it.name }.map { describe(it) }
 
@@ -36,7 +38,7 @@ class ModelManager(private val ctx: Context) {
 
     fun delete(f: File) = f.delete()
     fun totalModelBytes(): Long = dir.listFiles().orEmpty().sumOf { it.length() }
-    fun freeStorageBytes(): Long = ctx.filesDir.usableSpace
+    override fun freeStorageBytes(): Long = ctx.filesDir.usableSpace
 
     /** Heuristic only: GGUF weights are mmapped, so we need roughly file size + KV cache + overhead. Warns, never blocks silently. */
     fun compat(m: ModelInfo, nCtx: Int): Compat {

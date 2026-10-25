@@ -16,4 +16,3 @@ __pycache__/
 *.aab
 android-app/app/libs/*.aar
 dist/
-android-app/**/.cxx/
