@@ -105,15 +105,15 @@ jobs:
       - name: Gradle configuration
         id: configure
         working-directory: android-app
-        run: gradle --no-daemon :app:help --stacktrace
+        run: gradle --no-daemon --console=plain :app:help --stacktrace 2>&1 | tee /tmp/gradle-configure.log
       - name: Unit tests (compiles Kotlin main and test sources)
         id: unit
         working-directory: android-app
-        run: gradle --no-daemon :app:testDebugUnitTest --stacktrace
+        run: gradle --no-daemon --console=plain :app:testDebugUnitTest --stacktrace 2>&1 | tee /tmp/gradle-unit.log
       - name: Debug APK (compiles the native llama.cpp/JNI library)
         id: assemble
         working-directory: android-app
-        run: gradle --no-daemon :app:assembleDebug --stacktrace
+        run: gradle --no-daemon --console=plain :app:assembleDebug --stacktrace 2>&1 | tee /tmp/gradle-assemble.log
       - name: Verify the APK exists, is not empty, and contains the native library
         id: verify
         run: |
@@ -125,13 +125,27 @@ jobs:
       - name: Lint
         id: lint
         working-directory: android-app
-        run: gradle --no-daemon :app:lintDebug --stacktrace
+        run: gradle --no-daemon --console=plain :app:lintDebug --stacktrace 2>&1 | tee /tmp/gradle-lint.log
+      - name: Show the first real errors in the job summary
+        if: failure()
+        run: |
+          {
+            echo "## First errors found in the Gradle logs"
+            echo '```'
+            for f in /tmp/gradle-*.log; do
+              [ -f "$f" ] || continue
+              echo "--- $(basename "$f")"
+              grep -n -E "^e: |What went wrong|Lint found|error:|Execution failed|FAILED" -A6 "$f" | head -60
+            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Keep diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: build-diagnostics
           path: |
+            /tmp/gradle-*.log
             android-app/app/build/reports/**
             android-app/app/build/test-results/**
             android-app/app/.cxx/**/*.log
