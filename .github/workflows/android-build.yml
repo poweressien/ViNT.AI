@@ -1,5 +1,6 @@
-# ViNT Android CI. Written without being able to run it: the first run may need small fixes, and its log is the real test.
-# Repository root == the folder containing android-app/, tools/, docs/, tests/. Nothing binary is committed: every dependency is fetched here.
+# ViNT Android CI. Repository root == the folder that contains android-app/, tools/, docs/, tests/.
+# Written without being able to run it: the run log is the real test. Nothing binary is committed; every dependency is fetched here.
+# Jobs: python (tests + audits) | host-verify (JNI + engine against pinned llama.cpp) | android (SDK, Gradle, unit tests, debug APK, APK verification) | summary (honest).
 name: Build ViNT Android APK
 on:
   push:
@@ -10,66 +11,157 @@ permissions:
 concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
-env: { WORKDIR: '.' }                # repository root == the folder that directly contains android-app/, tools/, docs/, tests/ (the ZIP's top-level 'pidgingpt/' folder is NOT part of the repo)
+
 jobs:
-  build:
+  python:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Guard - project layout is where this workflow expects it
-        run: |
-          test -d "${{ env.WORKDIR }}/android-app" && test -f "${{ env.WORKDIR }}/tools/setup_llama_cpp.sh" || {
-            echo "Layout mismatch: expected android-app/ and tools/ under WORKDIR='${{ env.WORKDIR }}'. Found:"; ls -la; exit 1; }
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: '17' }
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - name: Python tests and static audits
-        working-directory: ${{ env.WORKDIR }}
         run: |
           pip install pytest pillow
           python -m pytest -q
           python tools/audit_android_offline.py android-app
           python tools/audit_brand_palette.py android-app
+
+  host-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
       - name: Fetch pinned llama.cpp (not stored in the repo)
-        working-directory: ${{ env.WORKDIR }}
+        run: bash tools/setup_llama_cpp.sh
+      - name: Host build tools (ninja, kotlinc 2.0.20, gguf, numpy)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
+          pip install gguf numpy
+          curl -fsSL -o /tmp/kotlinc.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.20/kotlin-compiler-2.0.20.zip
+          unzip -q /tmp/kotlinc.zip -d "$HOME" && echo "$HOME/kotlinc/bin" >> "$GITHUB_PATH"
+      - name: JNI bridge and engine verification against the pinned llama.cpp
+        run: bash tools/host-verify/run_host_verify.sh
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    outputs:
+      deps: ${{ steps.deps.outcome }}
+      sdk: ${{ steps.sdk.outcome }}
+      configure: ${{ steps.configure.outcome }}
+      unit: ${{ steps.unit.outcome }}
+      assemble: ${{ steps.assemble.outcome }}
+      apk: ${{ steps.verify.outcome }}
+      lint: ${{ steps.lint.outcome }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Fetch pinned llama.cpp (not stored in the repo)
         run: bash tools/setup_llama_cpp.sh
       - name: Fetch sherpa-onnx AAR (SHA-256 verified, not stored in the repo)
-        working-directory: ${{ env.WORKDIR }}
         run: python tools/fetch_voice_models.py --runtime
       - name: Check required dependencies exist before Gradle runs
-        working-directory: ${{ env.WORKDIR }}
+        id: deps
         run: |
           test -s android-app/app/libs/sherpa-onnx-1.13.8.aar
           test -f android-app/third_party/llama.cpp/CMakeLists.txt
           git -C android-app/third_party/llama.cpp rev-parse HEAD | grep -q "$(awk '{print $1}' docs/LLAMA_CPP_PIN.txt)"
-      - uses: android-actions/setup-android@v3          # installs cmdline-tools and accepts licences
-      - name: Install SDK platform and CMake (the NDK is installed by the Android Gradle Plugin because build.gradle.kts pins none)
+      # No `sdkmanager tools` anywhere: that package no longer exists (it broke android-actions/setup-android@v3, whose default package list still
+      # asks for it). ubuntu-latest already ships the SDK, so we use its sdkmanager and install only what this project needs, read from
+      # android-app/gradle.properties (the same file build.gradle.kts reads).
+      - name: Install the Android SDK packages this project needs
+        id: sdk
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "cmake;3.22.1"
+          props=android-app/gradle.properties
+          get() { grep -E "^$1=" "$props" | head -1 | cut -d= -f2- | tr -d '\r'; }
+          COMPILE_SDK="$(get vint.compileSdk)"; BUILD_TOOLS_VERSION="$(get vint.buildTools)"; NDK_VERSION="$(get vint.ndk)"; CMAKE_VERSION="$(get vint.cmake)"
+          for v in "$COMPILE_SDK" "$BUILD_TOOLS_VERSION" "$NDK_VERSION" "$CMAKE_VERSION"; do test -n "$v" || { echo "missing value in $props"; exit 1; }; done
+          export ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKM" ] || SDKM="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
+          echo "sdkmanager: $SDKM"
+          set +o pipefail; yes | "$SDKM" --licenses > /dev/null; set -o pipefail      # non-interactive licence acceptance (yes closes the pipe: ignore its SIGPIPE)
+          "$SDKM" --install "platforms;android-${COMPILE_SDK}" "build-tools;${BUILD_TOOLS_VERSION}" "ndk;${NDK_VERSION}" "cmake;${CMAKE_VERSION}"
+          "$SDKM" --list_installed
       - uses: gradle/actions/setup-gradle@v4              # supplies Gradle, so no wrapper jar has to be committed
         with: { gradle-version: '8.9' }
       - name: Gradle configuration
-        working-directory: ${{ env.WORKDIR }}/android-app
+        id: configure
+        working-directory: android-app
         run: gradle --no-daemon :app:help --stacktrace
-      - name: Lint, unit tests, debug APK (compiles Kotlin and the native llama.cpp/JNI library)
-        working-directory: ${{ env.WORKDIR }}/android-app
-        run: gradle --no-daemon :app:lintDebug :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - name: Unit tests (compiles Kotlin main and test sources)
+        id: unit
+        working-directory: android-app
+        run: gradle --no-daemon :app:testDebugUnitTest --stacktrace
+      - name: Debug APK (compiles the native llama.cpp/JNI library)
+        id: assemble
+        working-directory: android-app
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
       - name: Verify the APK exists, is not empty, and contains the native library
+        id: verify
         run: |
-          f=$(find ${{ env.WORKDIR }}/android-app/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          f=$(find android-app/app/build/outputs/apk/debug -name '*.apk' | head -1)
           test -n "$f" && test -s "$f" && ls -l "$f"
           unzip -l "$f" | grep -E "lib/arm64-v8a/.*\.so"
       - uses: actions/upload-artifact@v4
-        with: { name: vint-debug-apk, path: "${{ env.WORKDIR }}/android-app/app/build/outputs/apk/debug/*.apk", if-no-files-found: error }
+        with: { name: vint-debug-apk, path: "android-app/app/build/outputs/apk/debug/*.apk", if-no-files-found: error }
+      - name: Lint
+        id: lint
+        working-directory: android-app
+        run: gradle --no-daemon :app:lintDebug --stacktrace
       - name: Keep diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: build-diagnostics
           path: |
-            ${{ env.WORKDIR }}/android-app/app/build/reports/**
-            ${{ env.WORKDIR }}/android-app/app/build/test-results/**
-            ${{ env.WORKDIR }}/android-app/app/.cxx/**/*.log
+            android-app/app/build/reports/**
+            android-app/app/build/test-results/**
+            android-app/app/.cxx/**/*.log
+
+  summary:
+    if: always()
+    needs: [python, host-verify, android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Honest summary (only claims what actually happened)
+        env:
+          PYTHON: ${{ needs.python.result }}
+          HOST: ${{ needs.host-verify.result }}
+          DEPS: ${{ needs.android.outputs.deps }}
+          SDK: ${{ needs.android.outputs.sdk }}
+          CONFIGURE: ${{ needs.android.outputs.configure }}
+          UNIT: ${{ needs.android.outputs.unit }}
+          ASSEMBLE: ${{ needs.android.outputs.assemble }}
+          APK: ${{ needs.android.outputs.apk }}
+          LINT: ${{ needs.android.outputs.lint }}
+        run: |
+          label() { case "$1" in success) echo "passed";; failure) echo "FAILED";; "" | skipped | cancelled) echo "NOT RUN";; *) echo "$1";; esac; }
+          {
+            echo "## ViNT CI summary"
+            echo "| Check | Result |"; echo "|---|---|"
+            echo "| Python tests + audits | $(label "$PYTHON") |"
+            echo "| JNI/engine host verification | $(label "$HOST") |"
+            echo "| Dependencies present (llama.cpp pin, sherpa AAR) | $(label "$DEPS") |"
+            echo "| Android SDK packages | $(label "$SDK") |"
+            echo "| Gradle configuration | $(label "$CONFIGURE") |"
+            echo "| Kotlin compile + unit tests | $(label "$UNIT") |"
+            echo "| Debug APK + native compile | $(label "$ASSEMBLE") |"
+            echo "| APK exists, non-empty, has arm64 .so | $(label "$APK") |"
+            echo "| Lint | $(label "$LINT") |"
+            echo
+            if [ "$APK" = "success" ] && [ "$UNIT" = "success" ] && [ "$PYTHON" = "success" ] && [ "$HOST" = "success" ]; then
+              echo "**A debug APK was built and verified, and unit tests passed.** It has not been tested on a phone."
+            else
+              echo "**No verified build: at least one required stage did not pass or did not run.** Do not treat the project as build-ready."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

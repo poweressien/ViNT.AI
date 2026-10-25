@@ -1,7 +1,9 @@
 # ViNT — Your Pidgin. Your AI. Offline.
 (Repository folder and some script names still say *pidgingpt*; all user-facing text says ViNT.)
 
-## CI workflow
+## CI workflow (rewritten after run #3 failed at SDK setup)
+Run #3 died in `android-actions/setup-android@v3`, whose default package list still asks for the removed `tools` package. The workflow no longer uses that action: it uses the SDK preinstalled on `ubuntu-latest` and installs exactly the packages named in `android-app/gradle.properties` (`vint.compileSdk/buildTools/ndk/cmake`, also read by `build.gradle.kts`). Jobs: python, host-verify (JNI), android, summary (honest). Still **never run to completion**.
+
 `.github/workflows/android-build.yml` is new (you deleted the old one). Written but **never run**; push it and send me the log of the first run.
 
 ## Correction pass (after milestone 4)

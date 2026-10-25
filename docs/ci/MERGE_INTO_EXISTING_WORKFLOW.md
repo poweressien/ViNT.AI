@@ -13,7 +13,7 @@ Open your existing workflow (in `poweressien/ViNT`, under `.github/workflows/`) 
 | Pinned llama.cpp | `bash tools/setup_llama_cpp.sh` (reads `docs/LLAMA_CPP_PIN.txt`; folder is git-ignored) |
 | sherpa-onnx AAR | `python tools/fetch_voice_models.py --runtime` (SHA-256 verified; `app/libs/*.aar` is git-ignored) |
 | Dependency check | the "Check required dependencies" step in `android-build.proposed.yml` |
-| Android SDK | `android-actions/setup-android@v3`, accept licences, `platforms;android-34`, `build-tools;34.0.0`, `cmake;3.22.1`. Your first run failed at the SDK setup step: keep whatever fix you already made there. |
+| Android SDK | the SDK preinstalled on `ubuntu-latest` (do NOT use `android-actions/setup-android@v3`: its default `tools` package no longer exists and it fails), accept licences, `platforms;android-34`, `build-tools;34.0.0`, `cmake;3.22.1`. Your first run failed at the SDK setup step: keep whatever fix you already made there. |
 | Gradle | `gradle/actions/setup-gradle@v4` with `gradle-version: 8.9` (replaces the missing wrapper; no jar needs committing) |
 
 Then the build commands, run from `android-app/`: `gradle :app:help`, then `gradle :app:lintDebug :app:testDebugUnitTest :app:assembleDebug`, then verify the APK exists, is non-empty and contains `lib/arm64-v8a/*.so`, upload it, and upload `app/build/reports` and `app/build/test-results` on failure.

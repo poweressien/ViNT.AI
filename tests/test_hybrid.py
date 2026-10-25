@@ -125,4 +125,23 @@ def test_ci_workflow_exists_and_fetches_dependencies_before_gradle():
     at = 0
     for x in order:                                  # each step must appear AFTER the previous one
         i = w.find(x, at); assert i >= 0, f"missing or out of order: {x}"; at = i
-    assert "WORKDIR: '.'" in w and "gradle-version: '8.9'" in w
+    assert "gradle-version: '8.9'" in w and "working-directory: android-app" in w and "pidgingpt/" not in w      # paths are relative to the repo root
+
+
+def test_ci_never_requests_the_obsolete_sdk_tools_package_and_reads_one_toolchain_source():
+    w = "\n".join(l for l in read(ROOT / ".github/workflows/android-build.yml").splitlines() if not l.lstrip().startswith("#"))   # ignore comments
+    assert not re.search(r"sdkmanager[^\n]*\btools\b", w) and "setup-android" not in w
+    props = read(ROOT / "android-app/gradle.properties")
+    for k in ("vint.compileSdk", "vint.buildTools", "vint.ndk", "vint.cmake"):
+        assert re.search(rf"^{re.escape(k)}=\S+", props, re.M), k
+    g = read(ROOT / "android-app/app/build.gradle.kts")
+    for k in ("vint.compileSdk", "vint.buildTools", "vint.ndk", "vint.cmake"): assert f'gradleProperty("{k}")' in g, k
+    for needle in ("platforms;android-${COMPILE_SDK}", "build-tools;${BUILD_TOOLS_VERSION}", "ndk;${NDK_VERSION}", "cmake;${CMAKE_VERSION}", "--licenses"): assert needle in w, needle
+    assert 'applicationId = "ng.pidgingpt"' in g
+
+
+def test_ci_keeps_every_required_stage_and_an_honest_summary():
+    w = read(ROOT / ".github/workflows/android-build.yml")
+    for needle in ("python -m pytest -q", "run_host_verify.sh", ":app:testDebugUnitTest", ":app:assembleDebug", "lib/arm64-v8a", "upload-artifact", "GITHUB_STEP_SUMMARY", "NOT RUN", "No verified build"):
+        assert needle in w, needle
+    assert "continue-on-error" not in w            # nothing is allowed to fail silently

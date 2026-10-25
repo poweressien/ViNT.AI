@@ -5,14 +5,16 @@ plugins {
 }
 android {
     namespace = "ng.pidgingpt"
-    compileSdk = 34
+    compileSdk = providers.gradleProperty("vint.compileSdk").get().toInt()
+    buildToolsVersion = providers.gradleProperty("vint.buildTools").get()
+    ndkVersion = providers.gradleProperty("vint.ndk").get()
     defaultConfig {
         applicationId = "ng.pidgingpt"; minSdk = 26; targetSdk = 34
         versionCode = 4; versionName = "0.4.0-m4"
         ndk { abiFilters += listOf("arm64-v8a") }   // 64-bit ARM phones only; add x86_64 for emulator testing
         externalNativeBuild { cmake { cppFlags += "-std=c++17"; arguments += listOf("-DGGML_OPENMP=OFF") } }
     }
-    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
+    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = providers.gradleProperty("vint.cmake").get() } }
     buildTypes { release { isMinifyEnabled = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt")) } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
