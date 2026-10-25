@@ -1,6 +1,9 @@
 # ViNT — Your Pidgin. Your AI. Offline.
 (Repository folder and some script names still say *pidgingpt*; all user-facing text says ViNT.)
 
+## Run #4 finding
+CI stopped at `gradle :app:help` with "plugin com.android.application not found ... must include a version number". That message means the root `android-app/build.gradle.kts` Gradle evaluated had **no version** on the plugin, but the file in this project declares `version "8.5.2" apply false` exactly once and settings has the plugin repositories, so the checked-out file differs from this project. New `tools/check_gradle_layout.py` runs in CI before Gradle, prints the files as checked out, and fails with a precise reason.
+
 ## CI workflow (rewritten after run #3 failed at SDK setup)
 Run #3 died in `android-actions/setup-android@v3`, whose default package list still asks for the removed `tools` package. The workflow no longer uses that action: it uses the SDK preinstalled on `ubuntu-latest` and installs exactly the packages named in `android-app/gradle.properties` (`vint.compileSdk/buildTools/ndk/cmake`, also read by `build.gradle.kts`). Jobs: python, host-verify (JNI), android, summary (honest). Still **never run to completion**.
 

@@ -145,3 +145,36 @@ def test_ci_keeps_every_required_stage_and_an_honest_summary():
     for needle in ("python -m pytest -q", "run_host_verify.sh", ":app:testDebugUnitTest", ":app:assembleDebug", "lib/arm64-v8a", "upload-artifact", "GITHUB_STEP_SUMMARY", "NOT RUN", "No verified build"):
         assert needle in w, needle
     assert "continue-on-error" not in w            # nothing is allowed to fail silently
+
+
+def _copy_android(tmp_path):
+    import shutil
+    shutil.copytree(ROOT / "android-app", tmp_path / "a", ignore=shutil.ignore_patterns("third_party", "build"))
+    return tmp_path / "a"
+
+
+def _gradle_check(a):
+    return subprocess.run(["python3", str(ROOT / "tools/check_gradle_layout.py"), str(a)], capture_output=True, text=True)
+
+
+def test_gradle_plugin_layout_is_consistent():
+    r = _gradle_check(ROOT / "android-app"); assert r.returncode == 0, r.stdout
+
+
+def test_gradle_layout_check_catches_a_missing_plugin_version(tmp_path):
+    a = _copy_android(tmp_path); f = a / "build.gradle.kts"
+    f.write_text(f.read_text().replace('id("com.android.application") version "8.5.2" apply false', 'id("com.android.application") apply false'))
+    r = _gradle_check(a); assert r.returncode == 1 and "exactly one version" in r.stdout and "===== " in r.stdout
+
+
+def test_gradle_layout_check_catches_duplicate_versions_and_missing_repositories(tmp_path):
+    a = _copy_android(tmp_path); g = a / "app/build.gradle.kts"
+    g.write_text(g.read_text().replace('id("com.android.application")', 'id("com.android.application") version "8.5.2"', 1))
+    assert "duplicate" in _gradle_check(a).stdout
+    s = a / "settings.gradle.kts"; s.write_text(s.read_text().replace("gradlePluginPortal()", ""))
+    assert "missing gradlePluginPortal()" in _gradle_check(a).stdout
+
+
+def test_ci_checks_gradle_layout_before_gradle_runs():
+    w = read(ROOT / ".github/workflows/android-build.yml")
+    assert w.count("check_gradle_layout.py") >= 2 and w.index("check_gradle_layout.py", w.index("android:\n    runs-on")) < w.index(":app:help")

@@ -26,6 +26,7 @@ jobs:
           python -m pytest -q
           python tools/audit_android_offline.py android-app
           python tools/audit_brand_palette.py android-app
+          python tools/check_gradle_layout.py android-app
 
   host-verify:
     runs-on: ubuntu-latest
@@ -53,6 +54,7 @@ jobs:
     outputs:
       deps: ${{ steps.deps.outcome }}
       sdk: ${{ steps.sdk.outcome }}
+      layout: ${{ steps.layout.outcome }}
       configure: ${{ steps.configure.outcome }}
       unit: ${{ steps.unit.outcome }}
       assemble: ${{ steps.assemble.outcome }}
@@ -92,6 +94,12 @@ jobs:
           set +o pipefail; yes | "$SDKM" --licenses > /dev/null; set -o pipefail      # non-interactive licence acceptance (yes closes the pipe: ignore its SIGPIPE)
           "$SDKM" --install "platforms;android-${COMPILE_SDK}" "build-tools;${BUILD_TOOLS_VERSION}" "ndk;${NDK_VERSION}" "cmake;${CMAKE_VERSION}"
           "$SDKM" --list_installed
+      - name: Show and verify the Gradle plugin configuration exactly as checked out
+        id: layout
+        run: |
+          git log -1 --stat --oneline | head -20
+          for f in android-app/settings.gradle.kts android-app/build.gradle.kts android-app/app/build.gradle.kts android-app/gradle.properties; do echo "===== $f"; cat -n "$f"; done
+          python tools/check_gradle_layout.py android-app
       - uses: gradle/actions/setup-gradle@v4              # supplies Gradle, so no wrapper jar has to be committed
         with: { gradle-version: '8.9' }
       - name: Gradle configuration
@@ -139,6 +147,7 @@ jobs:
           HOST: ${{ needs.host-verify.result }}
           DEPS: ${{ needs.android.outputs.deps }}
           SDK: ${{ needs.android.outputs.sdk }}
+          LAYOUT: ${{ needs.android.outputs.layout }}
           CONFIGURE: ${{ needs.android.outputs.configure }}
           UNIT: ${{ needs.android.outputs.unit }}
           ASSEMBLE: ${{ needs.android.outputs.assemble }}
@@ -153,6 +162,7 @@ jobs:
             echo "| JNI/engine host verification | $(label "$HOST") |"
             echo "| Dependencies present (llama.cpp pin, sherpa AAR) | $(label "$DEPS") |"
             echo "| Android SDK packages | $(label "$SDK") |"
+            echo "| Gradle plugin layout (static) | $(label "$LAYOUT") |"
             echo "| Gradle configuration | $(label "$CONFIGURE") |"
             echo "| Kotlin compile + unit tests | $(label "$UNIT") |"
             echo "| Debug APK + native compile | $(label "$ASSEMBLE") |"
