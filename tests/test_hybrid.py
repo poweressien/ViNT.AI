@@ -183,3 +183,9 @@ def test_ci_checks_gradle_layout_before_gradle_runs():
 def test_ripple_alpha_is_imported_and_its_artifact_is_declared():
     assert "import androidx.compose.material.ripple.RippleAlpha" in read(J / "ui/Theme.kt")
     assert 'implementation("androidx.compose.material:material-ripple")' in read(ROOT / "android-app/app/build.gradle.kts")
+
+
+def test_ci_logs_gradle_output_and_explains_failures_in_the_summary():
+    w = read(ROOT / ".github/workflows/android-build.yml")
+    for t in (":app:help", ":app:testDebugUnitTest", ":app:assembleDebug", ":app:lintDebug"): assert t in w
+    assert w.count("tee /tmp/gradle-") == 4 and "First errors found in the Gradle logs" in w and "continue-on-error" not in w

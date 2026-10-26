@@ -50,16 +50,23 @@ def test_contrast_claims_in_brand_doc_are_true():
     assert A.contrast(gr, bg) >= 4.5 and A.contrast(gr, su) >= 4.5
 
 
-def test_icon_assets_regenerate_and_match_reference():
+def test_icon_assets_regenerate_and_fit_the_launcher_safe_zone():
+    """Milestone 5 replaced the toggle-pill icon with the owner's bubble-V + robot-head logo. The old reference stays in docs/ as history
+    (see test_original_reference_asset_untouched); the generator now guarantees the mark fits inside the always-visible 72 dp circle of the adaptive icon."""
     r = subprocess.run([sys.executable, str(ROOT / "tools/make_brand_assets.py")], capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
+    assert "farthest solid pixel" in r.stdout
     res = ROOT / "android-app/app/src/main/res"
-    for f in ("drawable/ic_launcher_foreground.xml", "drawable/ic_launcher_monochrome.xml", "drawable/ic_splash.xml",
-              "mipmap-anydpi-v26/ic_launcher.xml", "mipmap-anydpi-v26/ic_launcher_round.xml", "values/themes.xml", "values/strings.xml"):
+    for f in ("drawable-nodpi/ic_launcher_fg.png", "drawable-nodpi/ic_splash.png", "drawable/ic_launcher_monochrome.xml",
+              "mipmap-anydpi-v26/ic_launcher.xml", "mipmap-anydpi-v26/ic_launcher_round.xml", "values/themes.xml", "values/strings.xml",
+              "mipmap-mdpi/ic_launcher.png", "mipmap-xxxhdpi/ic_launcher.png", "mipmap-xxxhdpi/ic_launcher_round.png"):
         assert (res / f).exists(), f
+    assert not (res / "drawable/ic_launcher_foreground.xml").exists() and not (res / "drawable/ic_splash.xml").exists()
+    assert "@drawable/ic_launcher_fg" in (res / "mipmap-anydpi-v26/ic_launcher.xml").read_text()
     assert 'name="app_name">ViNT<' in (res / "values/strings.xml").read_text()
     manifest = (ROOT / "android-app/app/src/main/AndroidManifest.xml").read_text()
     assert '@string/app_name' in manifest and '@mipmap/ic_launcher' in manifest and "PidginGPT" not in manifest
+    assert (ROOT / "docs/brand-assets/vint-logo-reference.png").exists()
 
 
 def test_original_reference_asset_untouched():

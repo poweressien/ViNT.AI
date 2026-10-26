@@ -52,3 +52,10 @@ was not changed or introduced. Display name is `@string/app_name` = ViNT. Changi
 ## Voice screen (milestone 3)
 Same palette and rules: Surface cards with Border outlines, pill talk button (Surface + Border when idle, **Green fill with Background-colour text** while listening), green level meter on a Border track,
 green status dot only while voice mode is on, unavailable voices shown as plain outlined pills (no red). Checked by `tools/audit_brand_palette.py`; not yet viewed on a device.
+
+## Milestone 5: new logo (supplied by the owner)
+Reference: `docs/brand-assets/vint-logo-reference.png` (bubble with a V, robot head as the dot of the "i", "iNT" wordmark). Geometry and the three logo-art colours (near-black `#05090C`,
+neon green `#2EE59D`, off-white `#F6F7F9`) were measured from it by `tools/make_brand_assets.py`, which draws the launcher icons (legacy, round, adaptive foreground), the splash PNG and the
+monochrome themed-icon vector. **Those art colours appear only in the launcher/splash PNGs.** The in-app UI keeps the 4-colour palette above: `BotHead` and `BrandMark` in `Theme.kt` redraw
+the same mark in palette colours (no neon glow, which would need a colour outside the palette). The old toggle-pill icon (`reference-play-icon-512.png`) is kept only as history.
+Robot head moods: Idle (static), Thinking (bobbing + pulsing ring, shown while a reply loads or generates), Listening, Speaking (mouth animates). It is the voice-chat button in the chat header.

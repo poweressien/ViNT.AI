@@ -1,5 +1,11 @@
 package ng.pidgingpt.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -12,15 +18,20 @@ import androidx.compose.material.ripple.RippleAlpha
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * ViNT palette. Sampled from docs/brand-assets/reference-play-icon-512.png (dominant pixel colours):
@@ -136,21 +147,72 @@ fun Modifier.vintCard(shape: androidx.compose.ui.graphics.Shape = CardShape): Mo
     title = { Text(title) }, text = { Text(text) },
     confirmButton = { VintTextButton(confirm, onConfirm) }, dismissButton = { TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = Palette.White)) { Text(dismiss) } })
 
-/** The ViNT mark drawn from the same measured geometry as the launcher icon (tools/make_brand_assets.py). */
-@Composable fun BrandMark(size: Dp, modifier: Modifier = Modifier) {
+enum class BotMood { Idle, Thinking, Listening, Speaking }
+
+/** The ViNT robot head (the dot of the "i"). Drawn in the 4-colour palette. Static when [mood] is Idle (no animation cost); otherwise it animates. */
+@Composable fun BotHead(size: Dp, modifier: Modifier = Modifier, mood: BotMood = BotMood.Idle) {
+    if (mood == BotMood.Idle) BotCanvas(size, modifier, glow = 0f, mouth = 0f, blink = 0f, bob = 0f)
+    else AnimatedBot(size, modifier, mood)
+}
+
+@Composable private fun AnimatedBot(size: Dp, modifier: Modifier, mood: BotMood) {
+    val t = rememberInfiniteTransition(label = "bot")
+    val pulse by t.animateFloat(0f, 1f, infiniteRepeatable(tween(850, easing = LinearEasing), RepeatMode.Reverse), label = "pulse")
+    val talk by t.animateFloat(0f, 1f, infiniteRepeatable(tween(220, easing = LinearEasing), RepeatMode.Reverse), label = "talk")
+    val cycle by t.animateFloat(0f, 1f, infiniteRepeatable(tween(3000, easing = LinearEasing)), label = "cycle")
+    val blink = if (cycle > 0.93f && cycle < 0.98f) 1f else 0f
+    BotCanvas(size, modifier, glow = pulse, mouth = if (mood == BotMood.Speaking) talk else 0f, blink = blink,
+        bob = if (mood == BotMood.Thinking) pulse * 2f - 1f else 0f)
+}
+
+@Composable private fun BotCanvas(size: Dp, modifier: Modifier, glow: Float, mouth: Float, blink: Float, bob: Float) {
     Canvas(modifier.size(size)) {
-        val s = this.size.minDimension / 320f                // content spans about 307 x 317 reference units
-        val ox = -102.6f * s + (this.size.width - 307.4f * s) / 2f
-        val oy = -98f * s + (this.size.height - 317f * s) / 2f
-        fun pill(x0: Float, y0: Float, x1: Float, y1: Float, fill: Color, stroke: Color? = null) {
-            val r = (y1 - y0) / 2f * s
-            drawRoundRect(fill, Offset(x0 * s + ox, y0 * s + oy), Size((x1 - x0) * s, (y1 - y0) * s), CornerRadius(r, r))
-            if (stroke != null) drawRoundRect(stroke, Offset(x0 * s + ox, y0 * s + oy), Size((x1 - x0) * s, (y1 - y0) * s), CornerRadius(r, r), style = Stroke(3f * s))
+        val u = this.size.minDimension / 120f
+        val c = Offset(60f * u, 60f * u + bob * 3f * u)
+        if (glow > 0f) drawCircle(color = Palette.Green.copy(alpha = 0.10f + 0.22f * glow), radius = (44f + 8f * glow) * u, center = c)
+        for (sx in listOf(-1f, 1f)) {
+            val ex = c.x + (sx * 45f - 5.5f) * u
+            drawRoundRect(Palette.Background, Offset(ex, c.y - 17f * u), Size(11f * u, 34f * u), CornerRadius(5.5f * u, 5.5f * u))
+            drawRoundRect(Palette.Green, Offset(ex, c.y - 17f * u), Size(11f * u, 34f * u), CornerRadius(5.5f * u, 5.5f * u), style = Stroke(3.2f * u))
         }
-        pill(103f, 98f, 410f, 185f, Palette.Green)
-        drawOval(Palette.Background, Offset((361.8f - 35.2f) * s + ox, (140.8f - 26f) * s + oy), Size(70.4f * s, 52f * s))
-        pill(104.1f, 214.1f, 408.5f, 298.5f, Palette.Surface, Palette.Border)
-        pill(104.1f, 329.1f, 292.5f, 413.5f, Palette.Surface, Palette.Border)
+        drawCircle(color = Palette.Background, radius = 40f * u, center = c)
+        drawCircle(color = Palette.Green, radius = 40f * u, center = c, style = Stroke(5.5f * u))
+        for (sx in listOf(-1f, 1f)) {
+            val ex = c.x + sx * 14f * u; val ey = c.y - 7f * u
+            val h = (9.5f * (1f - blink)).coerceAtLeast(0.8f)
+            drawOval(Palette.White, Offset(ex - 9.5f * u, ey - h * u), Size(19f * u, 2f * h * u))
+            if (blink < 0.5f) drawCircle(color = Palette.Green, radius = 4.6f * u, center = Offset(ex, ey + 2.5f * u))
+        }
+        val nose = Path().apply { moveTo(c.x - 4.5f * u, c.y + 8f * u); lineTo(c.x + 4.5f * u, c.y + 8f * u); lineTo(c.x, c.y + 16f * u); close() }
+        drawPath(nose, Palette.Green)
+        if (mouth > 0.05f) drawOval(Palette.White, Offset(c.x - 10f * u, c.y + 19f * u), Size(20f * u, (3f + 9f * mouth) * u))
+        else drawArc(Palette.White, 20f, 140f, false, Offset(c.x - 17f * u, c.y + 8f * u), Size(34f * u, 24f * u), style = Stroke(3.6f * u, cap = StrokeCap.Round))
+    }
+}
+
+/** The ViNT mark: speech bubble with a V and the robot head (same layout as the launcher icon). [active] makes the head animate (thinking). */
+@Composable fun BrandMark(size: Dp, modifier: Modifier = Modifier, active: Boolean = false) {
+    Box(modifier.size(size)) {
+        Canvas(Modifier.fillMaxSize()) {
+            val w = this.size.width; val h = this.size.height
+            drawRoundRect(Palette.White, Offset(0.04f * w, 0.28f * h), Size(0.64f * w, 0.62f * h), CornerRadius(0.14f * w, 0.14f * w))
+            val tail = Path().apply { moveTo(0.12f * w, 0.82f * h); lineTo(0.03f * w, 0.98f * h); lineTo(0.30f * w, 0.86f * h); close() }
+            drawPath(tail, Palette.White)
+            val v = Path().apply { moveTo(0.18f * w, 0.46f * h); lineTo(0.36f * w, 0.76f * h); lineTo(0.54f * w, 0.46f * h) }
+            drawPath(v, Palette.Background, style = Stroke(0.10f * w, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        }
+        BotHead(size * 0.62f, Modifier.align(Alignment.TopEnd), if (active) BotMood.Thinking else BotMood.Idle)
+    }
+}
+
+/** Shown in place of an empty reply bubble while ViNT loads the model or generates: the robot head animates. */
+@Composable fun ThinkingBubble(loadingModel: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        BotHead(36.dp, mood = BotMood.Thinking); Spacer(Modifier.width(10.dp))
+        Column {
+            Text(if (loadingModel) "Loading the model\u2026" else "Thinking\u2026", fontSize = 14.sp, color = Palette.White)
+            if (loadingModel) Text("The first reply can take a minute.", fontSize = 11.sp, color = Palette.TextSecondary)
+        }
     }
 }
 

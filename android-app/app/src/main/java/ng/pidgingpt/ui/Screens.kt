@@ -39,6 +39,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import ng.pidgingpt.ChatViewModel
 import ng.pidgingpt.ai.*
 import ng.pidgingpt.net.CatalogEntry
@@ -135,7 +137,7 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable fun ChatScreen(vm: ChatViewModel, go: (Screen) -> Unit) {
     val msgs by vm.messages.collectAsState(); val engine by vm.engineState.collectAsState(); val gen by vm.genState.collectAsState()
-    val lastRun by vm.lastRun.collectAsState(); val status by vm.providerStatus.collectAsState(); val restored by vm.restoredDraft.collectAsState()
+    val failures by vm.failures.collectAsState(); val lastRun by vm.lastRun.collectAsState(); val status by vm.providerStatus.collectAsState(); val restored by vm.restoredDraft.collectAsState()
     var input by remember { mutableStateOf("") }; var menu by remember { mutableStateOf(false) }; var confirmClear by remember { mutableStateOf(false) }
     val list = rememberLazyListState(); val scope = rememberCoroutineScope(); val ctx = LocalContext.current
     val ready = status.selected != null; val busy = gen is GenState.Generating
@@ -147,13 +149,13 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
     Scaffold(containerColor = Palette.Background, contentColor = Palette.White, topBar = {
         TopAppBar(colors = TopAppBarDefaults.topAppBarColors(containerColor = Palette.Background, titleContentColor = Palette.White, actionIconContentColor = Palette.White), title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                BrandMark(30.dp); Spacer(Modifier.width(10.dp))
+                BrandMark(34.dp, active = busy); Spacer(Modifier.width(10.dp))
                 Column { Text("ViNT", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Row(verticalAlignment = Alignment.CenterVertically) { StatusDot(ready); Spacer(Modifier.width(6.dp))
-                        Text(if (busy) "Generating\u2026" else status.label, fontSize = 11.sp, color = Palette.TextSecondary, maxLines = 1) } } } },
+                        Text(if (busy) (if (engine is EngineState.Loading) "Loading model\u2026 (the first reply can take a minute)" else "Generating\u2026") else status.label, fontSize = 11.sp, color = Palette.TextSecondary, maxLines = 1) } } } },
             actions = {
                 IconButton({ vm.newChat() }, colors = vintIconButtonColors()) { Icon(Icons.Default.Add, "New conversation") }
-                IconButton({ go(Screen.Voice) }, colors = vintIconButtonColors()) { Icon(Icons.Default.Mic, "Voice chat") }
+                IconButton({ go(Screen.Voice) }, colors = vintIconButtonColors()) { Box(Modifier.semantics { contentDescription = "Voice chat" }) { BotHead(30.dp) } }
                 IconButton({ go(Screen.History) }, colors = vintIconButtonColors()) { Icon(Icons.Default.History, "Conversation history") }
                 Box {
                     IconButton({ menu = true }, colors = vintIconButtonColors()) { Icon(Icons.Default.MoreVert, "More") }
@@ -203,7 +205,8 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
                     val mine = m.role == "user"
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
                         Column(Modifier.widthIn(max = 320.dp).let { if (mine) it.background(Palette.Green, BubbleShape) else it.vintCard(BubbleShape) }.padding(14.dp)) {
-                            Text(m.content.ifEmpty { "…" }, color = if (mine) Palette.OnGreen else Palette.White, lineHeight = 22.sp)
+                            if (m.content.isEmpty() && busy && m.id == msgs.lastOrNull()?.id) ThinkingBubble(engine is EngineState.Loading)
+                            else Text(m.content.ifEmpty { "(no reply: ${failures[m.id] ?: "stopped"})" }, color = if (mine) Palette.OnGreen else Palette.White, lineHeight = 22.sp)
                             if (!mine && m.content.isNotEmpty() && providerName(m.provider).isNotEmpty()) secondary(providerName(m.provider), 10)
                             if (!mine && m.content.isNotEmpty()) IconButton({ (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("ViNT", m.content)) },
                                 Modifier.size(32.dp).align(Alignment.End), colors = vintIconButtonColors()) { Icon(Icons.Default.ContentCopy, "Copy response", Modifier.size(16.dp), tint = Palette.TextSecondary) }
@@ -340,6 +343,7 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
                 if (g?.license != null) secondary("License (from file): ${g.license}", 12) else secondary("License: not stated in the file. Check the model's source before sharing.", 12)
                 c.warning?.let { Notice(it, if (c.ok) Icons.Default.Info else Icons.Default.ErrorOutline) }
                 ProfileBlock(vm, m) { tick++ }
+                SelfTestBlock(vm)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (isReady) VintOutlinedButton("Unload", { vm.unloadModel() }) else VintButton("Load", { vm.loadModel(m.file.name) }, enabled = c.ok && engine !is EngineState.Loading)
                     VintOutlinedButton("Delete", { toDelete = m }) } }
@@ -376,6 +380,12 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
     }
 }
 
+@Composable private fun SelfTestBlock(vm: ChatViewModel) {
+    val t by vm.selfTest.collectAsState()
+    VintOutlinedButton("Test model (load + say hello)", { vm.runSelfTest() })
+    t?.let { secondary(it, 12) }
+}
+
 @Composable private fun ProfileBlock(vm: ChatViewModel, m: ModelInfo, onChange: () -> Unit) {
     val p = vm.profileOf(m); var dialog by remember { mutableStateOf(false) }
     secondary("Source: ${p.provenance}", 11)
@@ -389,15 +399,15 @@ private val starters = listOf("Guy, how body?", "Teach me new Pidgin slang.", "E
 }
 
 @Composable private fun PidginDialog(onDismiss: () -> Unit, onConfirm: (Evidence, String) -> Unit) {
-    var ev by remember { mutableStateOf(Evidence.USER_CONFIGURED) }; var note by remember { mutableStateOf("") }
+    var ev by remember { mutableStateOf<Evidence?>(null) }; var note by remember { mutableStateOf("") }
     AlertDialog({ onDismiss() }, shape = CardShape, containerColor = Palette.Surface, tonalElevation = 0.dp, titleContentColor = Palette.White, textContentColor = Palette.TextSecondary,
         title = { Text("Use as Pidgin model") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            secondary("ViNT will prefer this model for Nigerian Pidgin requests, and fall back to the English model if it fails. Only do this if it is true.", 13)
+            secondary("Only for a model that really was trained or tested on Nigerian Pidgin. General models such as Qwen are NOT Pidgin models: do not mark them. Choose the true statement:", 13)
             Row(Modifier.clickable { ev = Evidence.EVALUATED }, verticalAlignment = Alignment.CenterVertically) { RadioButton(ev == Evidence.EVALUATED, { ev = Evidence.EVALUATED }, colors = vintRadioColors()); Text("I evaluated it on Pidgin and it passed", fontSize = 13.sp, color = Palette.White) }
             Row(Modifier.clickable { ev = Evidence.USER_CONFIGURED }, verticalAlignment = Alignment.CenterVertically) { RadioButton(ev == Evidence.USER_CONFIGURED, { ev = Evidence.USER_CONFIGURED }, colors = vintRadioColors()); Text("It is my own Pidgin model and I choose to use it", fontSize = 13.sp, color = Palette.White) }
             OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") }, singleLine = true, shape = PillShape, colors = vintTextFieldColors()) } },
-        confirmButton = { VintTextButton("Use it", { onConfirm(ev, note) }) },
+        confirmButton = { VintTextButton("Use it", { ev?.let { onConfirm(it, note) } }) },
         dismissButton = { TextButton({ onDismiss() }, colors = ButtonDefaults.textButtonColors(contentColor = Palette.White)) { Text("Cancel") } })
 }
 

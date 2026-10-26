@@ -58,6 +58,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val _lastRun = MutableStateFlow<LastRun?>(null); val lastRun = _lastRun.asStateFlow()
     private val _status = MutableStateFlow(ProviderStatus("Connecting\u2026", null, false)); val providerStatus = _status.asStateFlow()
     private val _download = MutableStateFlow<DownloadUi?>(null); val download = _download.asStateFlow()
+    /** Why a reply bubble is empty (message id -> reason), so a failed reply is never a silent "...". */
+    private val _failures = MutableStateFlow<Map<Long, String>>(emptyMap()); val failures = _failures.asStateFlow()
+    private val _selfTest = MutableStateFlow<String?>(null); val selfTest = _selfTest.asStateFlow()
     private val _restoredDraft = MutableStateFlow<String?>(null); val restoredDraft = _restoredDraft.asStateFlow()
     private val _voice = MutableStateFlow(VoiceUi()); val voiceUi = _voice.asStateFlow()
     var conversationId: Long = -1; private set
@@ -122,6 +125,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun unmarkPidgin(info: ModelInfo) { registry.upsert(profileOf(info).copy(role = ModelRole.ENGLISH, markedAvailable = false, pidginEvidence = Evidence.UNTESTED)); refreshStatus() }
 
+    /** One tap diagnostic on the Model screen: loads the model, generates a few words, and reports the real result or the real error. */
+    fun runSelfTest() {
+        if (generating) return
+        viewModelScope.launch(Dispatchers.Default) { _selfTest.value = host.selfTest(settings.modelFileName) { _selfTest.value = it }; refreshStatus() }
+    }
+
     // ------------------------------------------------------------------ download (explicit user action only)
 
     fun partialBytes(e: CatalogEntry): Long = downloader.partialBytes(e)
@@ -185,6 +194,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val history = _messages.value.dropLast(1).map { ChatTurn(it.role, it.content) }          // shared by every provider: coherent across switches
         val req = AiRequest(UUID.randomUUID().toString(), history, settings.maxNewTokens, settings.temperature, decision, voice, allowOnline, force)
         val sb = StringBuilder(); var providerNow: ProviderKind? = null
+        _failures.update { it - aId }
+        fun noteFail(msg: String) { if (sb.isEmpty()) _failures.update { it + (aId to msg) } }
         fun emit(piece: String) { if (piece.isEmpty()) return; sb.append(piece)
             if (conversationId == conv) _messages.update { l -> l.map { if (it.id == aId) it.copy(content = sb.toString(), provider = providerNow?.name) else it } }
             onPiece?.invoke(piece) }
@@ -199,16 +210,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     Result.success(sb.toString())
                 }
                 is AiOutcome.Failed -> {
+                    noteFail(outcome.failure.message)
                     if (conversationId == conv) _gen.value = GenState.Failed(outcome.failure.message + if (outcome.partial) " The partial reply is kept. Tap Retry to answer again (it will not be sent twice by itself)." else "")
                     Result.failure(IllegalStateException(outcome.failure.message))
                 }
                 is AiOutcome.Cancelled -> { if (conversationId == conv) _gen.value = GenState.Cancelled(0); Result.success(sb.toString()) }
-                is AiOutcome.Rejected -> { _gen.value = GenState.Failed(outcome.advice); Result.failure(IllegalStateException(outcome.advice)) }
+                is AiOutcome.Rejected -> { noteFail(outcome.advice); _gen.value = GenState.Failed(outcome.advice); Result.failure(IllegalStateException(outcome.advice)) }
                 AiOutcome.Duplicate, AiOutcome.Busy -> { _gen.value = GenState.Failed("ViNT is already answering."); Result.failure(IllegalStateException("busy")) }
             }
             return result
         } catch (oom: OutOfMemoryError) {
-            host.unload(); _gen.value = GenState.Failed("Memory ran out. Reload with a smaller context.")
+            noteFail("Memory ran out"); host.unload(); _gen.value = GenState.Failed("Memory ran out. Reload with a smaller context.")
             return Result.failure(oom)
         } finally { store.updateMessage(aId, sb.toString(), providerNow?.name); refreshStatus() }
     }

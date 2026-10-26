@@ -80,6 +80,10 @@ private fun stateLabel(s: VoiceState, handsFree: Boolean): String = when (s) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // ---- status
             Row(verticalAlignment = Alignment.CenterVertically) { StatusDot(modeOn); Spacer(Modifier.width(8.dp)); Text(stateLabel(ui.state, handsFree), fontSize = 14.sp, modifier = Modifier.weight(1f)) }
+            Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                BotHead(150.dp, mood = when (ui.state) { is VoiceState.Listening -> BotMood.Listening; is VoiceState.Speaking -> BotMood.Speaking
+                    is VoiceState.Transcribing, is VoiceState.Thinking -> BotMood.Thinking; else -> BotMood.Idle })
+            }
             ui.notice?.let { Notice(it, Icons.Default.Info) }
             ui.route?.let { secondary(it, 12) }
             if (ui.state is VoiceState.Error) Notice((ui.state as VoiceState.Error).message)

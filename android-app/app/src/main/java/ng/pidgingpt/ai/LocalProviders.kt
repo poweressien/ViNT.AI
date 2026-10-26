@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import ng.pidgingpt.data.Compat
 import ng.pidgingpt.data.LanguageMode
 import ng.pidgingpt.data.ModelInfo
+import ng.pidgingpt.inference.ChatTurn
 import ng.pidgingpt.inference.EngineState
 import ng.pidgingpt.inference.InferenceEngine
 import ng.pidgingpt.inference.Prompts
@@ -79,6 +80,22 @@ class LocalModelHost(
         val info = listModels().let { l -> l.firstOrNull { it.file.name == name } ?: l.firstOrNull { it.gguf != null } }
             ?: run { _state.value = EngineState.NotInstalled; return Result.failure(IllegalStateException("No model installed.")) }
         return ensureLoaded(info)
+    }
+
+    /** Diagnostic for the Model screen: loads the model and generates a few words, returning the real result or the real error. Blocking. */
+    fun selfTest(fileName: String?, progress: (String) -> Unit): String {
+        progress("Testing: loading the model\u2026")
+        val t0 = System.currentTimeMillis(); val r = loadByName(fileName); val loadS = (System.currentTimeMillis() - t0) / 1000.0
+        if (r.isFailure) return "LOAD FAILED after %.1f s: %s".format(loadS, r.exceptionOrNull()?.message ?: "unknown error")
+        progress("Loaded in %.1f s. Generating a few words\u2026".format(loadS))
+        val sb = StringBuilder()
+        val g = runCatching { engine.generate(listOf(ChatTurn("user", "Say hello in one short sentence.")), 24, 0.2f) { sb.append(it) } }
+        val res = g.getOrNull()
+        return when {
+            res == null -> "GENERATION CRASHED: ${g.exceptionOrNull()?.javaClass?.simpleName}: ${g.exceptionOrNull()?.message}"
+            res.isFailure -> "GENERATION FAILED: ${res.exceptionOrNull()?.message}"
+            else -> { val st = res.getOrThrow(); "OK. Loaded in %.1f s, then %d tokens in %.1f s. The model said: \"%s\"".format(loadS, st.tokens, st.millis / 1000.0, sb.toString().trim().ifEmpty { "(nothing)" }) }
+        }
     }
 
     fun unload() { engine.unload(); loadedFile = null; loadedArch = null; _state.value = EngineState.Unloaded; refresh() }
